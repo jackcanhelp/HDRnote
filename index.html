@@ -1,0 +1,1601 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>洗腎室患者系統</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <style>
+    * { -webkit-tap-highlight-color: transparent; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .bg-gray-25 { background-color: #fafafa; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+<script type="text/babel">
+const {
+  Camera, User, History, Download, Save, Edit3, X, Check, AlertCircle, Zap,
+  Wifi, WifiOff, FileText, List, Search, Users, Pill, Plus, Trash2, Calendar,
+  ChevronLeft, ChevronRight, Activity, Bell, Clock, TrendingUp, Table
+} = lucide;
+
+const { useState, useEffect, useRef } = React;
+
+const DialysisPatientSystem = () => {
+  const [currentView, setCurrentView] = useState('login');
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [authToken, setAuthToken] = useState('');
+  const [currentUser, setCurrentUser] = useState(null);
+  const [currentPatient, setCurrentPatient] = useState(null);
+  const [editingField, setEditingField] = useState(null);
+  const [patients, setPatients] = useState([]);
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [cameraStream, setCameraStream] = useState(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const [qrScannerActive, setQrScannerActive] = useState(false);
+  const [isNewPatient, setIsNewPatient] = useState(false);
+  const [isOfflineMode, setIsOfflineMode] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [selectedPatientForMeds, setSelectedPatientForMeds] = useState(null);
+  const [editingMed, setEditingMed] = useState(null);
+  const [isAddingMed, setIsAddingMed] = useState(false);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [isEditingAllergy, setIsEditingAllergy] = useState(false);
+  const [selectedPatientForDialysis, setSelectedPatientForDialysis] = useState(null);
+  const [selectedPatientForReminders, setSelectedPatientForReminders] = useState(null);
+  const [editingDialysisRecord, setEditingDialysisRecord] = useState(null);
+  const [isAddingDialysisRecord, setIsAddingDialysisRecord] = useState(false);
+  const [selectedDialysisRecord, setSelectedDialysisRecord] = useState(null);
+  const [editingProcessRecord, setEditingProcessRecord] = useState(null);
+  const [isAddingProcessRecord, setIsAddingProcessRecord] = useState(false);
+  const [timeMachineMode, setTimeMachineMode] = useState(false);
+  const [customTime, setCustomTime] = useState('');
+  const [viewingHistoryDate, setViewingHistoryDate] = useState('');
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [notesContent, setNotesContent] = useState('');
+
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+
+  const API_BASE = 'http://localhost:5000/api';
+
+  const TEST_USERS = {
+    'admin': { username: 'admin', password: 'admin123', name: '系統管理員', role: 'admin' },
+    'nurse1': { username: 'nurse1', password: 'nurse123', name: '護理師小芯', role: 'nurse' },
+    'doctor1': { username: 'doctor1', password: 'doctor123', name: '醫師', role: 'doctor' }
+  };
+
+  const TEST_PATIENTS = [
+    {
+      patientId: 'P001234',
+      name: '林小明',
+      gender: '男',
+      birthday: '1965-03-15',
+      idNumber: 'A123456789',
+      frequency: 3,
+      duration: 4,
+      ak: 'FX80',
+      dialysate: 'Kt/V 1.4',
+      accessSide: '左',
+      accessLocation: '前臂',
+      accessType: 'AVF',
+      heparinDose: 3000,
+      bloodFlow: 280,
+      dw: 65.5,
+      bloodType: 'A+',
+      chronicDiseases: '糖尿病、高血壓、慢性腎衰竭',
+      drugAllergies: '盤尼西林',
+      firstDialysisHospital: '台大醫院',
+      firstDialysisDate: '2020-03-15',
+      medications: [
+        { id: 'med1', drugName: 'Calcitriol', dosage: '0.25', unit: 'mcg', quantity: 30, frequency: '每日一次', monthlyStatus: 'prescribed', hospital: '台大醫院', lastUpdated: '2025-06-01' },
+        { id: 'med2', drugName: 'Sevelamer', dosage: '800', unit: 'mg', quantity: 90, frequency: '每日三次', monthlyStatus: 'remaining', hospital: '台大醫院', lastUpdated: '2025-05-15' }
+      ],
+      medicationHistory: {
+        2025: { 'med1': { 1:'prescribed',2:'prescribed',3:'prescribed',4:'prescribed',5:'prescribed',6:'prescribed' }, 'med2': { 1:'prescribed',2:'prescribed',3:'remaining',4:'remaining',5:'remaining',6:'remaining' } },
+        2024: { 'med1': { 1:'prescribed',2:'prescribed',3:'prescribed',4:'prescribed',5:'prescribed',6:'prescribed',7:'prescribed',8:'prescribed',9:'prescribed',10:'prescribed',11:'prescribed',12:'prescribed' }, 'med2': { 1:'prescribed',2:'prescribed',3:'prescribed',4:'prescribed',5:'prescribed',6:'prescribed',7:'prescribed',8:'prescribed',9:'remaining',10:'remaining',11:'remaining',12:'remaining' } }
+      },
+      dialysisRecords: [
+        {
+          id: 'dr1', date: '2025-06-01', startTime: '08:00', endTime: '12:00', duration: 4.0,
+          artificialKidney: 'FX80', dialysate: 'K2.0 Ca1.25', accessSide: '左', accessLocation: '前臂', accessType: 'AVF',
+          heparinDose: 3000, bloodFlow: 280, preWeight: 67.2, clothingWeight: 1.5, postWeight: 65.5, dryWeight: 65.5,
+          fluidRemoval: 1.7, temperature: 36.8, notes: '透析順利，無不適症狀',
+          processRecords: [
+            { id:'pr1', time:'08:00', systolicBP:140, diastolicBP:80, heartRate:78, bloodFlow:280, fluidRemovalRate:0.4, specialNote:'開始透析，病人狀態穩定' },
+            { id:'pr2', time:'10:00', systolicBP:130, diastolicBP:75, heartRate:82, bloodFlow:280, fluidRemovalRate:0.5, specialNote:'' },
+            { id:'pr3', time:'11:30', systolicBP:110, diastolicBP:65, heartRate:85, bloodFlow:280, fluidRemovalRate:0.3, specialNote:'血壓下降，調整脫水速度' }
+          ]
+        },
+        {
+          id: 'dr2', date: '2025-05-30', startTime: '08:00', endTime: '12:00', duration: 4.0,
+          artificialKidney: 'FX80', dialysate: 'K2.0 Ca1.25', accessSide: '左', accessLocation: '前臂', accessType: 'AVF',
+          heparinDose: 3000, bloodFlow: 280, preWeight: 67.8, clothingWeight: 1.5, postWeight: 66.0, dryWeight: 65.5,
+          fluidRemoval: 1.8, temperature: 36.5, notes: '中途血壓略低，已調整',
+          processRecords: [
+            { id:'pr4', time:'08:00', systolicBP:135, diastolicBP:85, heartRate:75, bloodFlow:280, fluidRemovalRate:0.4, specialNote:'開始透析' },
+            { id:'pr5', time:'10:30', systolicBP:105, diastolicBP:60, heartRate:88, bloodFlow:250, fluidRemovalRate:0.2, specialNote:'血壓偏低，調整血流量和脫水速度，給予生理食鹽水100ml' }
+          ]
+        }
+      ],
+      reminders: `下次透析時間：週一、三、五 上午8:00\n\n待辦檢查項目：\n- 血液檢查 (6/15)\n- 心電圖檢查\n- 血管通路評估\n\n注意事項：\n- 限制水分攝取\n- 按時服藥\n- 觀察血管通路狀況`,
+      isActive: true, createdAt: new Date('2025-01-15'), updatedAt: new Date('2025-05-30')
+    },
+    {
+      patientId: 'P002468',
+      name: '陳小蓮',
+      gender: '女',
+      birthday: '1958-08-22',
+      idNumber: 'B987654321',
+      frequency: 3,
+      duration: 4.5,
+      ak: 'FX100',
+      dialysate: 'Kt/V 1.2',
+      accessSide: '右',
+      accessLocation: '上臂',
+      accessType: 'AVG',
+      heparinDose: 2500,
+      bloodFlow: 250,
+      dw: 58.2,
+      bloodType: 'O-',
+      chronicDiseases: '多囊性腎病、高血壓',
+      drugAllergies: '無已知過敏',
+      firstDialysisHospital: '榮總醫院',
+      firstDialysisDate: '2018-08-22',
+      medications: [
+        { id: 'med3', drugName: 'EPO注射液', dosage: '4000', unit: 'IU', quantity: 4, frequency: '每週一次', monthlyStatus: 'prescribed', hospital: '榮總醫院', lastUpdated: '2025-06-01' }
+      ],
+      medicationHistory: {
+        2025: { 'med3': { 1:'prescribed',2:'prescribed',3:'prescribed',4:'prescribed',5:'prescribed',6:'prescribed' } },
+        2024: { 'med3': { 1:'prescribed',2:'prescribed',3:'prescribed',4:'prescribed',5:'prescribed',6:'prescribed',7:'prescribed',8:'prescribed',9:'prescribed',10:'prescribed',11:'prescribed',12:'prescribed' } }
+      },
+      dialysisRecords: [
+        {
+          id: 'dr3', date: '2025-06-01', startTime: '13:30', endTime: '18:00', duration: 4.5,
+          artificialKidney: 'FX100', dialysate: 'K2.0 Ca1.25', accessSide: '右', accessLocation: '上臂', accessType: 'AVG',
+          heparinDose: 2500, bloodFlow: 250, preWeight: 60.5, clothingWeight: 1.2, postWeight: 58.2, dryWeight: 58.2,
+          fluidRemoval: 2.3, temperature: 36.9, notes: '透析過程順利',
+          processRecords: [
+            { id:'pr6', time:'13:30', systolicBP:145, diastolicBP:90, heartRate:72, bloodFlow:250, fluidRemovalRate:0.5, specialNote:'開始透析' },
+            { id:'pr7', time:'16:00', systolicBP:130, diastolicBP:80, heartRate:76, bloodFlow:250, fluidRemovalRate:0.5, specialNote:'狀態穩定' }
+          ]
+        }
+      ],
+      reminders: `下次透析時間：週二、四、六 下午1:30\n\nEPO注射時間：\n- 每週四注射\n- 下次注射日期：6/5\n\n用藥提醒：\n- 按時服用EPO注射液\n- 注意注射部位輪換`,
+      isActive: true, createdAt: new Date('2025-02-01'), updatedAt: new Date('2025-05-29')
+    },
+    {
+      patientId: 'P003579',
+      name: '吳大山',
+      gender: '男',
+      birthday: '1972-12-10',
+      idNumber: 'C123789456',
+      frequency: 2,
+      duration: 5,
+      ak: 'FX60',
+      dialysate: 'Kt/V 1.3',
+      accessSide: '左',
+      accessLocation: '上臂',
+      accessType: 'Permcath',
+      heparinDose: 4000,
+      bloodFlow: 300,
+      dw: 72.8,
+      bloodType: 'B+',
+      chronicDiseases: '慢性腎病、糖尿病',
+      drugAllergies: '磺胺類藥物',
+      firstDialysisHospital: '長庚醫院',
+      firstDialysisDate: '2019-06-01',
+      medications: [
+        { id: 'med4', drugName: 'Insulin', dosage: '10', unit: 'unit', quantity: 1, frequency: '每日一次', monthlyStatus: 'discontinued', hospital: '長庚醫院', lastUpdated: '2025-05-20' }
+      ],
+      medicationHistory: {
+        2025: { 'med4': { 1:'prescribed',2:'prescribed',3:'prescribed',4:'prescribed',5:'discontinued',6:'discontinued' } },
+        2024: { 'med4': { 1:'prescribed',2:'prescribed',3:'prescribed',4:'prescribed',5:'prescribed',6:'prescribed',7:'prescribed',8:'prescribed',9:'prescribed',10:'prescribed',11:'prescribed',12:'prescribed' } }
+      },
+      dialysisRecords: [
+        {
+          id: 'dr4', date: '2025-05-20', startTime: '14:00', endTime: '19:00', duration: 5.0,
+          artificialKidney: 'FX60', dialysate: 'K2.0 Ca1.25', accessSide: '左', accessLocation: '上臂', accessType: 'Permcath',
+          heparinDose: 4000, bloodFlow: 300, preWeight: 74.8, clothingWeight: 2.0, postWeight: 72.8, dryWeight: 72.8,
+          fluidRemoval: 2.0, temperature: 37.1, notes: '最後一次透析，已轉院',
+          processRecords: [
+            { id:'pr8', time:'14:00', systolicBP:160, diastolicBP:95, heartRate:80, bloodFlow:300, fluidRemovalRate:0.4, specialNote:'開始透析，血壓偏高' },
+            { id:'pr9', time:'17:00', systolicBP:140, diastolicBP:85, heartRate:78, bloodFlow:300, fluidRemovalRate:0.4, specialNote:'最後一次透析，準備轉院' }
+          ]
+        }
+      ],
+      reminders: `轉院通知：\n- 已轉至其他醫院繼續治療\n- 轉院日期：2025/6/1\n- 新醫院：××醫院腎臟科\n\n後續追蹤：\n- 需要病歷轉移\n- 已完成轉院手續`,
+      isActive: false, createdAt: new Date('2025-03-10'), updatedAt: new Date('2025-05-25')
+    },
+    {
+      patientId: 'P004680',
+      name: '張美枝',
+      gender: '女',
+      birthday: '1963-05-18',
+      idNumber: 'D456123789',
+      frequency: 3,
+      duration: 4,
+      ak: 'FX80',
+      dialysate: 'Kt/V 1.5',
+      accessSide: '右',
+      accessLocation: '前臂',
+      accessType: 'AVF',
+      heparinDose: 2800,
+      bloodFlow: 270,
+      dw: 60.3,
+      bloodType: 'AB-',
+      chronicDiseases: '高血壓、慢性腎衰竭',
+      drugAllergies: '無已知過敏',
+      firstDialysisHospital: '馬偕醫院',
+      firstDialysisDate: '2021-02-14',
+      medications: [
+        { id: 'med5', drugName: 'Amlodipine', dosage: '5', unit: 'mg', quantity: 28, frequency: '每日一次', monthlyStatus: 'prescribed', hospital: '馬偕醫院', lastUpdated: '2025-06-01' },
+        { id: 'med6', drugName: 'Phosphate Binder', dosage: '500', unit: 'mg', quantity: 60, frequency: '每日兩次', monthlyStatus: 'remaining', hospital: '馬偕醫院', lastUpdated: '2025-05-20' }
+      ],
+      medicationHistory: {
+        2025: { 'med5': { 1:'prescribed',2:'prescribed',3:'prescribed',4:'prescribed',5:'prescribed',6:'prescribed' }, 'med6': { 1:'prescribed',2:'prescribed',3:'remaining',4:'remaining',5:'remaining',6:'remaining' } },
+        2024: { 'med5': { 1:'prescribed',2:'prescribed',3:'prescribed',4:'prescribed',5:'prescribed',6:'prescribed',7:'prescribed',8:'prescribed',9:'prescribed',10:'prescribed',11:'prescribed',12:'prescribed' }, 'med6': { 1:'prescribed',2:'prescribed',3:'prescribed',4:'prescribed',5:'prescribed',6:'prescribed',7:'prescribed',8:'prescribed',9:'remaining',10:'remaining',11:'remaining',12:'remaining' } }
+      },
+      dialysisRecords: [
+        {
+          id: 'dr5', date: '2025-06-01', startTime: '08:00', endTime: '12:00', duration: 4.0,
+          artificialKidney: 'FX80', dialysate: 'K2.0 Ca1.25', accessSide: '右', accessLocation: '前臂', accessType: 'AVF',
+          heparinDose: 2800, bloodFlow: 270, preWeight: 62.1, clothingWeight: 1.5, postWeight: 60.3, dryWeight: 60.3,
+          fluidRemoval: 1.8, temperature: 36.7, notes: '透析效果良好',
+          processRecords: [
+            { id:'pr10', time:'08:00', systolicBP:125, diastolicBP:75, heartRate:70, bloodFlow:270, fluidRemovalRate:0.4, specialNote:'開始透析' },
+            { id:'pr11', time:'10:00', systolicBP:120, diastolicBP:70, heartRate:72, bloodFlow:270, fluidRemovalRate:0.5, specialNote:'狀態良好' },
+            { id:'pr12', time:'12:00', systolicBP:115, diastolicBP:68, heartRate:74, bloodFlow:270, fluidRemovalRate:0.2, specialNote:'透析結束，狀態穩定' }
+          ]
+        }
+      ],
+      reminders: `下次透析時間：週一、三、五 上午8:00\n\n近期待辦檢查：\n- 血管通路檢查 (6/10)\n- AVF功能評估\n- 超音波檢查預約\n\n藥物調整提醒：\n- Amlodipine劑量評估 (6/7)\n- 血壓監控加強`,
+      isActive: true, createdAt: new Date('2025-01-20'), updatedAt: new Date('2025-05-28')
+    }
+  ];
+
+  const fieldNames = {
+    name: '姓名', gender: '性別', birthday: '生日', idNumber: '身份證字號',
+    patientId: '病歷號', frequency: '頻率', duration: '時間', ak: '人工腎臟',
+    dialysate: '透析液', accessSide: '血管通路(左右)', accessLocation: '血管通路(部位)',
+    accessType: '血管通路(類型)', heparinDose: '肝素劑量', bloodFlow: '血流量', dw: '乾體重',
+    bloodType: '血型', chronicDiseases: '慢性疾病', drugAllergies: '藥物過敏史',
+    firstDialysisHospital: '首次透析院所', firstDialysisDate: '首次透析時間',
+    systolicBP: '收縮壓', diastolicBP: '舒張壓', heartRate: '心跳', fluidRemovalRate: '脫水速度'
+  };
+
+  useEffect(() => {
+    setPatients(TEST_PATIENTS);
+    return () => { if (cameraStream) cameraStream.getTracks().forEach(t => t.stop()); };
+  }, [cameraStream]);
+
+  const apiRequest = async (endpoint, options = {}) => {
+    try {
+      setError('');
+      const config = { headers: { 'Content-Type': 'application/json', ...(authToken && { Authorization: `Bearer ${authToken}` }) }, ...options };
+      const response = await fetch(`${API_BASE}${endpoint}`, config);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || '請求失敗');
+      return data;
+    } catch (error) {
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        setIsOfflineMode(true);
+        throw new Error('切換至離線模式');
+      } else { setError(error.message); }
+      throw error;
+    }
+  };
+
+  const handleLogin = async (username, password) => {
+    try {
+      setLoading(true); setError('');
+      try {
+        const data = await apiRequest('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) });
+        if (data.success) {
+          setAuthToken(data.data.token); setCurrentUser(data.data.user);
+          setIsLoggedIn(true); setCurrentView('scanner'); setIsOfflineMode(false);
+          await loadPatients(); return;
+        }
+      } catch (apiError) { setIsOfflineMode(true); }
+      const testUser = TEST_USERS[username];
+      if (testUser && testUser.password === password) {
+        setAuthToken(`mock-token-${Date.now()}`);
+        setCurrentUser({ username: testUser.username, name: testUser.name, role: testUser.role });
+        setIsLoggedIn(true); setCurrentView('scanner'); setIsOfflineMode(true); return;
+      }
+      throw new Error('帳號或密碼錯誤');
+    } catch (error) { setError(error.message); } finally { setLoading(false); }
+  };
+
+  const loadPatients = async () => {
+    try {
+      if (!isOfflineMode) {
+        const data = await apiRequest('/patients');
+        if (data.success) { setPatients(data.data.patients || []); return; }
+      }
+    } catch { setIsOfflineMode(true); }
+    setPatients(TEST_PATIENTS);
+  };
+
+  const startCamera = async () => {
+    try {
+      setError(''); setLoading(true);
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } });
+      setCameraStream(stream); setQrScannerActive(true);
+      if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); startQRScanning(); }
+    } catch (error) { setError('無法啟動相機：' + error.message); } finally { setLoading(false); }
+  };
+
+  const stopCamera = () => {
+    if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); setCameraStream(null); }
+    setQrScannerActive(false); setIsScanning(false);
+  };
+
+  const startQRScanning = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    setIsScanning(true);
+    const video = videoRef.current; const canvas = canvasRef.current; const context = canvas.getContext('2d');
+    const scanFrame = () => {
+      if (!video.videoWidth) { setTimeout(scanFrame, 100); return; }
+      canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+      context.drawImage(video, 0, 0);
+      if (Math.random() < 0.05) {
+        const ids = ['P001234', 'P002468'];
+        handleQRDetected(ids[Math.floor(Math.random() * ids.length)]);
+      } else if (qrScannerActive) { setTimeout(scanFrame, 200); }
+    };
+    scanFrame();
+  };
+
+  const handleQRDetected = async (qrCode) => { setIsScanning(false); stopCamera(); await handleQRScan(qrCode); };
+
+  const handleManualInput = () => {
+    const patientId = prompt('請輸入病歷號:\n\n可用測試ID:\n• P001234 (林小明)\n• P002468 (陳小蓮)\n• P003579 (吳大山-暫停)\n• P004680 (張美枝)');
+    if (patientId) handleQRScan(patientId.toUpperCase());
+  };
+
+  const handleQRScan = async (patientId) => {
+    try {
+      setLoading(true);
+      if (!isOfflineMode) {
+        try {
+          const data = await apiRequest(`/patients/qr/${patientId}`);
+          if (data.success) { setCurrentPatient(data.data.patient); setIsNewPatient(false); setCurrentView('patient'); await loadPatientHistory(patientId); return; }
+        } catch { setIsOfflineMode(true); }
+      }
+      const foundPatient = patients.find(p => p.patientId === patientId);
+      if (foundPatient) {
+        setCurrentPatient(foundPatient); setIsNewPatient(false); setCurrentView('patient'); await loadPatientHistory(patientId);
+      } else {
+        const shouldCreateNew = confirm(`找不到病歷號 "${patientId}" 的病人資料。\n\n是否要建立新的病人資料？`);
+        if (shouldCreateNew) {
+          setCurrentPatient({ patientId, name:'', gender:'男', birthday:'', idNumber:'', frequency:3, duration:4, ak:'', dialysate:'', accessSide:'左', accessLocation:'前臂', accessType:'AVF', heparinDose:0, bloodFlow:0, dw:0, bloodType:'', chronicDiseases:'', drugAllergies:'', firstDialysisHospital:'', firstDialysisDate:'', medications:[], medicationHistory:{}, dialysisRecords:[], reminders:'' });
+          setIsNewPatient(true); setCurrentView('patient'); setHistory([]);
+        }
+      }
+    } catch (error) { setError(error.message); } finally { setLoading(false); }
+  };
+
+  const loadPatientHistory = async (patientId) => {
+    try {
+      if (!isOfflineMode) {
+        const data = await apiRequest(`/history/${patientId}`);
+        if (data.success) { setHistory(data.data.history.map(r => ({ date: new Date(r.createdAt).toISOString().split('T')[0], time: new Date(r.createdAt).toTimeString().split(' ')[0].substring(0,5), operator: r.operator.name, changeType: r.changeType, changes: r.changes, notes: r.notes }))); return; }
+      }
+    } catch { setIsOfflineMode(true); }
+    setHistory([{ date:'2025-05-30', time:'14:30', operator: currentUser?.name||'系統', changeType:'更新', changes:{ dw:{old:'66.0',new:'65.5'} }, notes:'透析後體重調整' }, { date:'2025-05-28', time:'09:15', operator: currentUser?.name||'系統', changeType:'更新', changes:{ bloodFlow:{old:'260',new:'280'} }, notes:'增加血流量' }]);
+  };
+
+  const handleCreatePatient = async () => {
+    if (!currentPatient) return;
+    try {
+      setLoading(true);
+      const required = ['patientId','name','gender','birthday','idNumber'];
+      for (const f of required) { if (!currentPatient[f]) throw new Error(`請填寫 ${fieldNames[f]||f}`); }
+      if (!isOfflineMode) {
+        try {
+          const data = await apiRequest('/patients', { method:'POST', body:JSON.stringify(currentPatient) });
+          if (data.success) { setPatients(prev=>[...prev,data.data.patient]); setIsNewPatient(false); alert(`✅ 新病人建立成功！\n病歷號: ${currentPatient.patientId}\n姓名: ${currentPatient.name}`); await loadPatientHistory(currentPatient.patientId); return; }
+        } catch { setIsOfflineMode(true); }
+      }
+      const newP = { ...currentPatient, isActive:true, createdAt:new Date(), updatedAt:new Date() };
+      setPatients(prev=>[...prev,newP]); setIsNewPatient(false);
+      alert(`病人資料建立成功！\n病歷號: ${currentPatient.patientId}\n姓名: ${currentPatient.name}${isOfflineMode?'\n(離線模式)':''}`);
+    } catch (error) { setError(error.message); } finally { setLoading(false); }
+  };
+
+  const handleSave = async () => {
+    if (!currentPatient) return;
+    try {
+      setLoading(true);
+      if (!isOfflineMode) {
+        try {
+          const data = await apiRequest(`/patients/${currentPatient.patientId}`, { method:'PUT', body:JSON.stringify(currentPatient) });
+          if (data.success) { setPatients(patients.map(p=>p.patientId===currentPatient.patientId?data.data.patient:p)); await loadPatientHistory(currentPatient.patientId); alert(`✅ 資料已儲存成功！\n操作者: ${currentUser?.name||'系統'}`); return; }
+        } catch { setIsOfflineMode(true); }
+      }
+      setPatients(patients.map(p=>p.patientId===currentPatient.patientId?currentPatient:p));
+      setHistory(prev=>[{ date:new Date().toISOString().split('T')[0], time:new Date().toTimeString().split(' ')[0].substring(0,5), operator:currentUser?.name||'系統', changeType:'更新', changes:{lastUpdate:{old:'上次更新',new:'剛剛更新'}}, notes:'本地儲存更新' },...prev]);
+      alert(`資料儲存成功！\n操作者: ${currentUser?.name||'系統'}${isOfflineMode?'\n(離線模式)':''}`);
+    } catch (error) { setError(error.message); } finally { setLoading(false); }
+  };
+
+  const handleExport = () => {
+    if (!currentPatient) return;
+    const content = `洗腎病患資料表\n\n基本資料：\n姓名：${currentPatient.name}\n性別：${currentPatient.gender}\n生日：${currentPatient.birthday}\n身份證字號：${currentPatient.idNumber}\n病歷號：${currentPatient.patientId}\n\n背景資料：\n血型：${currentPatient.bloodType||'N/A'}\n慢性疾病：${currentPatient.chronicDiseases||'N/A'}\n藥物過敏史：${currentPatient.drugAllergies||'N/A'}\n首次透析院所：${currentPatient.firstDialysisHospital||'N/A'}\n首次透析時間：${currentPatient.firstDialysisDate||'N/A'}\n\n透析設定：\n頻率：每週${currentPatient.frequency||3}次\n時間：${currentPatient.duration||4}小時\n人工腎臟：${currentPatient.ak||'N/A'}\n透析液：${currentPatient.dialysate||'N/A'}\n血管通路：${currentPatient.accessSide||'左'}側${currentPatient.accessLocation||'前臂'} ${currentPatient.accessType||'AVF'}\n肝素劑量：${currentPatient.heparinDose||0} IU\n血流量：${currentPatient.bloodFlow||0} ml/min\n乾體重：${currentPatient.dw||0} kg\n\n匯出時間：${new Date().toLocaleString('zh-TW')}\n操作者：${currentUser?.name||'系統'}`;
+    try {
+      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `${currentPatient.name}_${currentPatient.patientId}_${new Date().toISOString().split('T')[0]}.txt`;
+      a.click(); URL.revokeObjectURL(url);
+      alert('✅ 檔案已匯出成功！');
+    } catch { alert('無法下載，請手動複製內容'); }
+  };
+
+  const updateField = (field, value) => setCurrentPatient(prev=>({...prev,[field]:value}));
+
+  const getFilteredPatients = () => {
+    let filtered = patients;
+    if (statusFilter==='active') filtered=filtered.filter(p=>p.isActive!==false);
+    else if (statusFilter==='inactive') filtered=filtered.filter(p=>p.isActive===false);
+    if (searchTerm.trim()) {
+      const term=searchTerm.toLowerCase().trim();
+      filtered=filtered.filter(p=>p.name?.toLowerCase().includes(term)||p.patientId?.toLowerCase().includes(term)||p.idNumber?.toLowerCase().includes(term));
+    }
+    return filtered;
+  };
+
+  const handleSelectPatient = async (patient) => {
+    setCurrentPatient(patient); setIsNewPatient(false); setCurrentView('patient');
+    await loadPatientHistory(patient.patientId);
+  };
+
+  const handleMedicationManagement = (patient) => { setSelectedPatientForMeds(patient); setCurrentView('medications'); };
+
+  const addNewMedication = () => {
+    setEditingMed({ id:`med_${Date.now()}`, drugName:'', dosage:'', unit:'mg', quantity:0, frequency:'每日一次', monthlyStatus:'prescribed', hospital:'', lastUpdated:new Date().toISOString().split('T')[0] });
+    setIsAddingMed(true);
+  };
+
+  const saveMedication = () => {
+    if (!editingMed||!selectedPatientForMeds) return;
+    if (!editingMed.drugName||!editingMed.dosage||!editingMed.hospital) { alert('請填寫藥物名稱、劑量和領立醫院'); return; }
+    const updated = patients.map(p => {
+      if (p.patientId===selectedPatientForMeds.patientId) {
+        const meds=p.medications||[];
+        return { ...p, medications: isAddingMed ? [...meds,editingMed] : meds.map(m=>m.id===editingMed.id?editingMed:m) };
+      }
+      return p;
+    });
+    setPatients(updated); setSelectedPatientForMeds(updated.find(p=>p.patientId===selectedPatientForMeds.patientId));
+    setEditingMed(null); setIsAddingMed(false); alert('藥物資料已儲存！');
+  };
+
+  const deleteMedication = (medId) => {
+    if (!confirm('確定要刪除這筆藥物記錄嗎？')) return;
+    const updated = patients.map(p => {
+      if (p.patientId===selectedPatientForMeds.patientId) return { ...p, medications:(p.medications||[]).filter(m=>m.id!==medId) };
+      return p;
+    });
+    setPatients(updated); setSelectedPatientForMeds(updated.find(p=>p.patientId===selectedPatientForMeds.patientId));
+    alert('藥物記錄已刪除！');
+  };
+
+  const updateMedicationField = (field, value) => setEditingMed(prev=>({...prev,[field]:value}));
+
+  const getStatusIcon = (status) => ({ prescribed:'✅', remaining:'🪣', discontinued:'DC' }[status]||'✅');
+  const getStatusColor = (status) => ({ prescribed:'text-green-600 bg-green-50', remaining:'text-orange-600 bg-orange-50', discontinued:'text-red-600 bg-red-50' }[status]||'text-gray-600 bg-gray-50');
+
+  const saveAllergy = () => {
+    if (!selectedPatientForMeds) return;
+    const updated = patients.map(p => p.patientId===selectedPatientForMeds.patientId ? {...p,drugAllergies:selectedPatientForMeds.drugAllergies} : p);
+    setPatients(updated); setSelectedPatientForMeds(updated.find(p=>p.patientId===selectedPatientForMeds.patientId));
+    setIsEditingAllergy(false); alert('過敏史已更新！');
+  };
+
+  const getAvailableYears = () => { const y=new Date().getFullYear(); return [y,y-1,y-2]; };
+  const getMonthName = (m) => ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'][m-1];
+
+  const editMedicationFromBackground = () => { if (currentPatient) { setSelectedPatientForMeds(currentPatient); setCurrentView('medications'); } };
+
+  const handleDialysisRecords = (patient) => { setSelectedPatientForDialysis(patient); setCurrentView('dialysisRecords'); };
+  const handleReminders = (patient) => { setSelectedPatientForReminders(patient); setNotesContent(patient.reminders||''); setCurrentView('reminders'); };
+
+  const saveReminders = () => {
+    if (!selectedPatientForReminders) return;
+    const updated = patients.map(p => p.patientId===selectedPatientForReminders.patientId ? {...p,reminders:notesContent} : p);
+    setPatients(updated); setSelectedPatientForReminders(updated.find(p=>p.patientId===selectedPatientForReminders.patientId));
+    setEditingNotes(false); alert('提醒便條已儲存！');
+  };
+
+  const addNewDialysisRecord = () => {
+    setEditingDialysisRecord({ id:`dr_${Date.now()}`, date:new Date().toISOString().split('T')[0], startTime:'08:00', endTime:'12:00', duration:4.0, artificialKidney:selectedPatientForDialysis?.ak||'', dialysate:'K2.0 Ca1.25', accessSide:selectedPatientForDialysis?.accessSide||'左', accessLocation:selectedPatientForDialysis?.accessLocation||'前臂', accessType:selectedPatientForDialysis?.accessType||'AVF', heparinDose:selectedPatientForDialysis?.heparinDose||0, bloodFlow:selectedPatientForDialysis?.bloodFlow||0, preWeight:0, clothingWeight:1.5, postWeight:0, dryWeight:selectedPatientForDialysis?.dw||0, fluidRemoval:0, temperature:36.5, notes:'', processRecords:[] });
+    setIsAddingDialysisRecord(true);
+  };
+
+  const saveDialysisRecord = () => {
+    if (!editingDialysisRecord||!selectedPatientForDialysis) return;
+    if (!editingDialysisRecord.date||!editingDialysisRecord.startTime||!editingDialysisRecord.endTime) { alert('請填寫日期、開始時間和結束時間'); return; }
+    const updated = patients.map(p => {
+      if (p.patientId===selectedPatientForDialysis.patientId) {
+        const recs=p.dialysisRecords||[];
+        return { ...p, dialysisRecords: isAddingDialysisRecord ? [editingDialysisRecord,...recs] : recs.map(r=>r.id===editingDialysisRecord.id?editingDialysisRecord:r) };
+      }
+      return p;
+    });
+    setPatients(updated); setSelectedPatientForDialysis(updated.find(p=>p.patientId===selectedPatientForDialysis.patientId));
+    setEditingDialysisRecord(null); setIsAddingDialysisRecord(false); alert('透析記錄已儲存！');
+  };
+
+  const deleteDialysisRecord = (recordId) => {
+    if (!confirm('確定要刪除這筆透析記錄嗎？')) return;
+    const updated = patients.map(p => {
+      if (p.patientId===selectedPatientForDialysis.patientId) return { ...p, dialysisRecords:(p.dialysisRecords||[]).filter(r=>r.id!==recordId) };
+      return p;
+    });
+    setPatients(updated); setSelectedPatientForDialysis(updated.find(p=>p.patientId===selectedPatientForDialysis.patientId));
+    alert('透析記錄已刪除！');
+  };
+
+  const updateDialysisRecordField = (field, value) => setEditingDialysisRecord(prev=>({...prev,[field]:value}));
+
+  const handleDialysisProcess = (dialysisRecord) => { setSelectedDialysisRecord(dialysisRecord); setCurrentView('dialysisProcess'); };
+
+  const addNewProcessRecord = (targetTime=null) => {
+    const now=new Date(); const currentTime=targetTime||`${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+    setEditingProcessRecord({ id:`pr_${Date.now()}`, time:currentTime, systolicBP:140, diastolicBP:90, heartRate:80, bloodFlow:280, fluidRemovalRate:0.5, specialNote:'' });
+    setIsAddingProcessRecord(true); setTimeMachineMode(false);
+  };
+
+  const ScrollSelector = ({ label, value, onChange, min, max, step, unit, color="blue" }) => {
+    const options = [];
+    for (let i=min; i<=max; i+=step) options.push(Math.round(i*10)/10);
+    const currentIndex = options.findIndex(opt=>opt===value);
+    const handleScroll = (dir) => {
+      const newIdx = dir==='up' ? Math.min(options.length-1,currentIndex+1) : Math.max(0,currentIndex-1);
+      onChange(options[newIdx]);
+    };
+    const themes = {
+      red:    { border:'border-red-300',    bg:'bg-red-50',    btn:'bg-red-100 hover:bg-red-200 text-red-700',    disp:'border-red-400 text-red-800',    lbl:'text-red-600' },
+      pink:   { border:'border-pink-300',   bg:'bg-pink-50',   btn:'bg-pink-100 hover:bg-pink-200 text-pink-700',  disp:'border-pink-400 text-pink-800',   lbl:'text-pink-600' },
+      orange: { border:'border-orange-300', bg:'bg-orange-50', btn:'bg-orange-100 hover:bg-orange-200 text-orange-700', disp:'border-orange-400 text-orange-800', lbl:'text-orange-600' },
+      blue:   { border:'border-blue-300',   bg:'bg-blue-50',   btn:'bg-blue-100 hover:bg-blue-200 text-blue-700',  disp:'border-blue-400 text-blue-800',   lbl:'text-blue-600' }
+    };
+    const t = themes[color]||themes.blue;
+    return (
+      <div className="text-center">
+        <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
+        <div className={`border-2 ${t.border} rounded-lg ${t.bg} p-3`}>
+          <button type="button" onClick={()=>handleScroll('up')} className={`w-full py-2 px-2 ${t.btn} rounded font-bold text-lg`}>▲</button>
+          <div className={`py-4 px-2 text-center bg-white my-2 rounded border-2 ${t.disp}`}>
+            <div className={`text-3xl font-bold`}>{value}</div>
+            <div className={`text-sm ${t.lbl} mt-1`}>{unit}</div>
+          </div>
+          <button type="button" onClick={()=>handleScroll('down')} className={`w-full py-2 px-2 ${t.btn} rounded font-bold text-lg`}>▼</button>
+        </div>
+      </div>
+    );
+  };
+
+  const saveProcessRecord = () => {
+    if (!editingProcessRecord||!selectedDialysisRecord) return;
+    if (!editingProcessRecord.time) { alert('請填寫記錄時間'); return; }
+    if (!editingProcessRecord.systolicBP||!editingProcessRecord.diastolicBP) { alert('請設定血壓數值'); return; }
+    const updated = patients.map(p => {
+      if (p.patientId===selectedPatientForDialysis.patientId) {
+        const recs = p.dialysisRecords.map(record => {
+          if (record.id===selectedDialysisRecord.id) {
+            const prs=record.processRecords||[];
+            if (isAddingProcessRecord) {
+              const newPrs=[...prs,editingProcessRecord].sort((a,b)=>a.time.localeCompare(b.time));
+              return {...record,processRecords:newPrs};
+            } else {
+              return {...record,processRecords:prs.map(pr=>pr.id===editingProcessRecord.id?editingProcessRecord:pr)};
+            }
+          }
+          return record;
+        });
+        return {...p,dialysisRecords:recs};
+      }
+      return p;
+    });
+    setPatients(updated);
+    const updP=updated.find(p=>p.patientId===selectedPatientForDialysis.patientId);
+    setSelectedPatientForDialysis(updP);
+    const updR=updP.dialysisRecords.find(r=>r.id===selectedDialysisRecord.id);
+    setSelectedDialysisRecord(updR);
+    setEditingProcessRecord(null); setIsAddingProcessRecord(false); alert('透析過程記錄已儲存！');
+  };
+
+  const deleteProcessRecord = (recordId) => {
+    if (!confirm('確定要刪除這筆過程記錄嗎？')) return;
+    const updated = patients.map(p => {
+      if (p.patientId===selectedPatientForDialysis.patientId) {
+        const recs = p.dialysisRecords.map(record => {
+          if (record.id===selectedDialysisRecord.id) return {...record,processRecords:(record.processRecords||[]).filter(pr=>pr.id!==recordId)};
+          return record;
+        });
+        return {...p,dialysisRecords:recs};
+      }
+      return p;
+    });
+    setPatients(updated);
+    const updP=updated.find(p=>p.patientId===selectedPatientForDialysis.patientId);
+    setSelectedPatientForDialysis(updP);
+    setSelectedDialysisRecord(updP.dialysisRecords.find(r=>r.id===selectedDialysisRecord.id));
+    alert('透析過程記錄已刪除！');
+  };
+
+  const updateProcessRecordField = (field, value) => setEditingProcessRecord(prev=>({...prev,[field]:value}));
+
+  const generateTimeOptions = () => {
+    if (!selectedDialysisRecord) return [];
+    const start=new Date(`2000-01-01 ${selectedDialysisRecord.startTime}`);
+    const end=new Date(`2000-01-01 ${selectedDialysisRecord.endTime}`);
+    const opts=[]; const cur=new Date(start);
+    while (cur<=end) { opts.push(`${cur.getHours().toString().padStart(2,'0')}:${cur.getMinutes().toString().padStart(2,'0')}`); cur.setMinutes(cur.getMinutes()+30); }
+    return opts;
+  };
+
+  const addCustomTimeRecord = () => {
+    if (!customTime) { alert('請輸入時間'); return; }
+    if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(customTime)) { alert('請輸入正確的時間格式 (例如: 09:30)'); return; }
+    const start=new Date(`2000-01-01 ${selectedDialysisRecord.startTime}`);
+    const end=new Date(`2000-01-01 ${selectedDialysisRecord.endTime}`);
+    const input=new Date(`2000-01-01 ${customTime}`);
+    if (input<start||input>end) { alert(`時間必須在透析時間範圍內 (${selectedDialysisRecord.startTime} - ${selectedDialysisRecord.endTime})`); return; }
+    if ((selectedDialysisRecord.processRecords||[]).some(r=>r.time===customTime)) { alert('此時間已有記錄'); return; }
+    addNewProcessRecord(customTime); setCustomTime(''); setTimeMachineMode(false);
+  };
+
+  const getHistoryDates = () => {
+    if (!selectedPatientForDialysis?.dialysisRecords) return [];
+    return selectedPatientForDialysis.dialysisRecords.map(r=>r.date).sort((a,b)=>new Date(b)-new Date(a));
+  };
+
+  const generateNursingNotes = (processRecords) => {
+    if (!processRecords||!processRecords.length) return '';
+    return processRecords.filter(r=>r.specialNote&&r.specialNote.trim()).sort((a,b)=>a.time.localeCompare(b.time)).map(r=>`${r.time} ${r.specialNote}`).join('、 ');
+  };
+
+  const EditableField = ({ label, field, value, type='text', options=null, disabled=false }) => {
+    const isEditing = editingField===field&&!disabled;
+    return (
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+        <div className="flex items-center">
+          {isEditing ? (
+            <div className="flex items-center w-full">
+              {options ? (
+                <select value={value||''} onChange={e=>updateField(field,e.target.value)} className="flex-1 p-2 border border-gray-300 rounded-md">
+                  {options.map(o=><option key={o} value={o}>{o}</option>)}
+                </select>
+              ) : (
+                <input type={type} value={value||''} onChange={e=>updateField(field,e.target.value)} className="flex-1 p-2 border border-gray-300 rounded-md" step={type==='number'?(field==='dw'?'0.1':'1'):undefined} />
+              )}
+              <button onClick={()=>setEditingField(null)} className="ml-2 p-2 text-green-600 hover:bg-green-50 rounded">
+                <Check size={16} />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center w-full">
+              <span className={`flex-1 p-2 rounded-md ${disabled?'bg-gray-100 text-gray-500':'bg-gray-50'}`}>{value||'N/A'}</span>
+              {!disabled&&<button onClick={()=>setEditingField(field)} className="ml-2 p-2 text-blue-600 hover:bg-blue-50 rounded"><Edit3 size={16} /></button>}
+            </div>
+          )}
+        </div>
+        {disabled&&field==='patientId'&&<p className="text-xs text-gray-500 mt-1">病歷號建立後無法修改</p>}
+      </div>
+    );
+  };
+
+  const ErrorAlert = () => !error ? null : (
+    <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-4 flex items-center">
+      <AlertCircle className="text-red-500 mr-2" size={20} />
+      <span className="text-red-700">{error}</span>
+      <button onClick={()=>setError('')} className="ml-auto text-red-500"><X size={16} /></button>
+    </div>
+  );
+
+  const LoadingSpinner = () => (
+    <div className="flex items-center justify-center p-4">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <span className="ml-2 text-gray-600">載入中...</span>
+    </div>
+  );
+
+  const ConnectionStatus = () => (
+    <div className={`flex items-center text-xs px-2 py-1 rounded-full ${isOfflineMode?'bg-orange-100 text-orange-700':'bg-green-100 text-green-700'}`}>
+      {isOfflineMode ? <WifiOff size={12} className="mr-1" /> : <Wifi size={12} className="mr-1" />}
+      {isOfflineMode?'離線模式':'線上模式'}
+    </div>
+  );
+
+  // ===== LOGIN VIEW =====
+  if (!isLoggedIn) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+        <div className="bg-white rounded-lg shadow-lg p-8 w-full max-w-md">
+          <div className="text-center mb-6">
+            <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+              <User className="text-blue-600" size={32} />
+            </div>
+            <h1 className="text-2xl font-bold text-gray-800">洗腎室病患系統</h1>
+            <p className="text-gray-600">請輸入帳號密碼登入</p>
+          </div>
+          <ErrorAlert />
+          <div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">帳號</label>
+              <input type="text" id="username" className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500" placeholder="請輸入帳號" disabled={loading} />
+            </div>
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">密碼</label>
+              <input type="password" id="password" className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500" placeholder="請輸入密碼" disabled={loading}
+                onKeyPress={e=>{ if(e.key==='Enter') handleLogin(document.getElementById('username').value,document.getElementById('password').value); }} />
+            </div>
+            <button onClick={()=>handleLogin(document.getElementById('username').value,document.getElementById('password').value)} disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 disabled:bg-gray-400">
+              {loading?'登入中...':'登入'}
+            </button>
+            <div className="mt-6 bg-gray-50 p-4 rounded-lg">
+              <p className="text-sm font-medium text-gray-700 mb-2">🧪 測試帳號：</p>
+              <div className="space-y-1 text-sm text-gray-600">
+                <p><strong>管理員：</strong> admin / admin123</p>
+                <p><strong>護理師：</strong> nurse1 / nurse123</p>
+                <p><strong>醫師：</strong> doctor1 / doctor123</p>
+              </div>
+              <div className="mt-3 p-2 bg-blue-50 rounded border-l-4 border-blue-400">
+                <p className="text-xs text-blue-700">💡 無後端時自動切換至離線測試模式</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ===== SCANNER VIEW =====
+  if (currentView==='scanner') {
+    return (
+      <div className="min-h-screen bg-gray-50 p-4">
+        <div className="max-w-md mx-auto">
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <div className="text-center mb-6">
+              <div className="bg-blue-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Camera className="text-blue-600" size={40} />
+              </div>
+              <h2 className="text-xl font-bold text-gray-800 mb-2">掃描病人QR Code</h2>
+              <div className="flex items-center justify-center space-x-2 mt-3">
+                <p className="text-sm text-blue-600">歡迎回來，{currentUser?.name}</p>
+                <ConnectionStatus />
+              </div>
+            </div>
+            <ErrorAlert />
+            {!qrScannerActive ? (
+              <div>
+                {loading&&<LoadingSpinner />}
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center mb-6">
+                  <Camera className="text-gray-400 mx-auto mb-2" size={48} />
+                  <p className="text-gray-500 mb-4">準備掃描QR Code</p>
+                  <button onClick={startCamera} disabled={loading} className="bg-blue-600 text-white px-6 py-3 rounded-md hover:bg-blue-700 disabled:bg-gray-400 flex items-center mx-auto mb-3">
+                    <Camera className="mr-2" size={20} />{loading?'啟動中...':'開啟相機掃描'}
+                  </button>
+                  <button onClick={handleManualInput} className="bg-gray-600 text-white px-6 py-2 rounded-md hover:bg-gray-700 flex items-center mx-auto text-sm">
+                    <Edit3 className="mr-2" size={16} />手動輸入病歷號
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="mb-6">
+                <div className="relative bg-black rounded-lg overflow-hidden">
+                  <video ref={videoRef} className="w-full h-64 object-cover" playsInline muted />
+                  <canvas ref={canvasRef} className="hidden" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="border-2 border-red-500 w-48 h-48 bg-transparent relative">
+                      <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-red-500"></div>
+                      <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-red-500"></div>
+                      <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-red-500"></div>
+                      <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-red-500"></div>
+                      {isScanning&&<div className="absolute inset-0 flex items-center justify-center"><Zap className="text-red-500 animate-pulse" size={24} /></div>}
+                    </div>
+                  </div>
+                  <div className="absolute bottom-4 left-4 right-4 bg-black bg-opacity-70 text-white p-3 rounded">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <div className={`w-3 h-3 rounded-full mr-2 ${isScanning?'bg-green-500 animate-pulse':'bg-yellow-500'}`}></div>
+                        <span className="text-sm">{isScanning?'正在掃描QR Code...':'正在準備掃描...'}</span>
+                      </div>
+                      <button onClick={stopCamera} className="bg-red-600 text-white px-3 py-1 rounded text-sm">停止</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            <div className="space-y-2">
+              <div className="flex space-x-2 mb-4">
+                <button onClick={()=>setCurrentView('patientList')} className="flex-1 bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 flex items-center justify-center">
+                  <List className="mr-2" size={16} />病人列表
+                </button>
+                <button onClick={handleManualInput} className="flex-1 bg-orange-600 text-white py-2 px-4 rounded-md hover:bg-orange-700 flex items-center justify-center">
+                  <Search className="mr-2" size={16} />快速查找
+                </button>
+              </div>
+              <p className="text-sm text-gray-600 mb-2">🧪 測試功能：</p>
+              <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+                {[['P001234','林小明','blue'],['P002468','陳小蓮','green'],['P003579','吳大山-已暫停','red'],['P004680','張美枝','indigo']].map(([id,name,color])=>(
+                  <button key={id} onClick={()=>handleQRScan(id)} disabled={loading} className={`w-full bg-${color}-600 text-white py-2 rounded-md hover:bg-${color}-700 disabled:bg-gray-400`}>
+                    📱 測試病人：{name} ({id})
+                  </button>
+                ))}
+                <button onClick={()=>{ setCurrentPatient({ patientId:`P${Date.now().toString().slice(-6)}`, name:'', gender:'男', birthday:'', idNumber:'', frequency:3, duration:4, ak:'', dialysate:'', accessSide:'左', accessLocation:'前臂', accessType:'AVF', heparinDose:0, bloodFlow:0, dw:0, bloodType:'', chronicDiseases:'', drugAllergies:'', firstDialysisHospital:'', firstDialysisDate:'', medications:[], medicationHistory:{}, dialysisRecords:[], reminders:'' }); setIsNewPatient(true); setCurrentView('patient'); setHistory([]); }} disabled={loading} className="w-full bg-purple-600 text-white py-2 rounded-md hover:bg-purple-700 disabled:bg-gray-400">
+                  ➕ 新增病人資料
+                </button>
+              </div>
+            </div>
+            <button onClick={()=>{ setIsLoggedIn(false); setAuthToken(''); setCurrentUser(null); setCurrentView('login'); setIsOfflineMode(false); }} className="w-full mt-4 text-gray-600 hover:text-gray-800 py-2">登出</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ===== DIALYSIS PROCESS VIEW =====
+  if (currentView==='dialysisProcess'&&selectedDialysisRecord) {
+    const processRecords=selectedDialysisRecord.processRecords||[];
+    const timeOptions=generateTimeOptions();
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-white shadow-sm border-b p-4">
+          <div className="flex items-center justify-between">
+            <button onClick={()=>{ setCurrentView('dialysisRecords'); setViewingHistoryDate(''); setTimeMachineMode(false); setCustomTime(''); }} className="text-blue-600 hover:bg-blue-50 p-2 rounded"><X size={20} /></button>
+            <div className="text-center"><h1 className="text-lg font-semibold">透析過程紀錄</h1><ConnectionStatus /></div>
+            <div className="flex space-x-2">
+              <button onClick={()=>setTimeMachineMode(!timeMachineMode)} className={`p-2 rounded border ${timeMachineMode?'bg-purple-100 text-purple-600 border-purple-300':'text-purple-600 hover:bg-purple-50 border-purple-200'}`} title="時光機"><Clock size={20} /></button>
+              <button onClick={()=>addNewProcessRecord()} className="text-green-600 hover:bg-green-50 p-2 rounded border border-green-200" title="新增當前時間記錄"><Plus size={20} /></button>
+            </div>
+          </div>
+        </div>
+        <div className="p-4 max-w-4xl mx-auto">
+          <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
+            <div className="flex items-center space-x-3">
+              <TrendingUp className="text-green-600" size={24} />
+              <div>
+                <h3 className="font-semibold text-gray-800">{selectedPatientForDialysis.name}</h3>
+                <p className="text-sm text-gray-600">透析日期: {selectedDialysisRecord.date} | 時間: {selectedDialysisRecord.startTime} - {selectedDialysisRecord.endTime}</p>
+              </div>
+            </div>
+          </div>
+          <ErrorAlert />
+
+          {timeMachineMode&&(
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-6 mb-4">
+              <div className="flex items-center space-x-3 mb-4"><Clock className="text-purple-600" size={24} /><h4 className="font-semibold text-purple-800">時光機 - 回到特定時間點</h4></div>
+              <div className="mb-4 bg-white p-4 rounded border border-purple-300">
+                <h5 className="font-medium text-purple-700 mb-3">自訂時間記錄</h5>
+                <div className="flex items-center space-x-3">
+                  <input type="time" value={customTime} onChange={e=>setCustomTime(e.target.value)} className="p-2 border border-purple-300 rounded" min={selectedDialysisRecord.startTime} max={selectedDialysisRecord.endTime} />
+                  <button onClick={addCustomTimeRecord} className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">新增記錄</button>
+                </div>
+                <p className="text-xs text-purple-600 mt-2">時間範圍: {selectedDialysisRecord.startTime} - {selectedDialysisRecord.endTime}</p>
+              </div>
+              <div className="grid grid-cols-4 md:grid-cols-6 gap-2 mb-4">
+                {timeOptions.map(time=>{ const has=processRecords.some(pr=>pr.time===time); return (
+                  <button key={time} onClick={()=>addNewProcessRecord(time)} className={`p-3 rounded text-sm font-medium ${has?'bg-green-100 text-green-800 border border-green-300 cursor-not-allowed':'bg-white text-purple-600 border border-purple-300 hover:bg-purple-100'}`} disabled={has}>
+                    <div className="font-bold">{time}</div>
+                    <div className="text-xs mt-1">{has?'✅ 已記錄':'點擊補記'}</div>
+                  </button>
+                );})}
+              </div>
+              <button onClick={()=>setTimeMachineMode(false)} className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">關閉時光機</button>
+            </div>
+          )}
+
+          {editingProcessRecord&&(
+            <div className="bg-white rounded-lg shadow-sm p-6 mb-4 border-l-4 border-green-500">
+              <h4 className="font-semibold mb-4 text-gray-800">{isAddingProcessRecord?'新增':'編輯'}透析過程記錄</h4>
+              <div className="grid grid-cols-1 gap-6 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">記錄時間 *</label>
+                  <input type="time" value={editingProcessRecord.time} onChange={e=>updateProcessRecordField('time',e.target.value)} className="w-full p-3 border border-gray-300 rounded-md text-lg" />
+                </div>
+                <div className="bg-gray-50 p-6 rounded-lg">
+                  <h5 className="text-lg font-semibold mb-4 text-center text-gray-800">生理參數設定</h5>
+                  <div className="grid grid-cols-2 gap-4 mb-6">
+                    <ScrollSelector label="收縮壓" value={editingProcessRecord.systolicBP} onChange={v=>updateProcessRecordField('systolicBP',v)} min={80} max={200} step={1} unit="mmHg" color="red" />
+                    <ScrollSelector label="舒張壓" value={editingProcessRecord.diastolicBP} onChange={v=>updateProcessRecordField('diastolicBP',v)} min={40} max={120} step={1} unit="mmHg" color="red" />
+                  </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <ScrollSelector label="心跳" value={editingProcessRecord.heartRate} onChange={v=>updateProcessRecordField('heartRate',v)} min={40} max={150} step={1} unit="/min" color="pink" />
+                    <ScrollSelector label="血流量" value={editingProcessRecord.bloodFlow} onChange={v=>updateProcessRecordField('bloodFlow',v)} min={150} max={400} step={10} unit="ml/min" color="orange" />
+                    <ScrollSelector label="脫水速度" value={editingProcessRecord.fluidRemovalRate} onChange={v=>updateProcessRecordField('fluidRemovalRate',v)} min={0.0} max={2.0} step={0.1} unit="L/hr" color="blue" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">特殊處置/備註</label>
+                  <textarea value={editingProcessRecord.specialNote} onChange={e=>updateProcessRecordField('specialNote',e.target.value)} className="w-full p-3 border border-gray-300 rounded-md resize-none" rows="3" placeholder="記錄任何特殊處置、藥物給予、病人反應等" />
+                </div>
+              </div>
+              <div className="flex space-x-3">
+                <button onClick={saveProcessRecord} className="bg-green-600 text-white px-6 py-3 rounded-md hover:bg-green-700 flex items-center text-lg"><Save size={20} className="mr-2" />儲存記錄</button>
+                <button onClick={()=>{ setEditingProcessRecord(null); setIsAddingProcessRecord(false); }} className="bg-gray-600 text-white px-6 py-3 rounded-md hover:bg-gray-700 text-lg">取消</button>
+              </div>
+            </div>
+          )}
+
+          {processRecords.length>0 ? (
+            <div className="space-y-6">
+              <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+                <div className="p-4 bg-gray-50 border-b"><h4 className="font-semibold text-gray-800 flex items-center"><Table className="mr-2" size={20} />透析過程監測記錄表</h4></div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-100 border-b">
+                      <tr>
+                        <th className="text-left py-3 px-3 font-medium text-gray-700 min-w-16">時間</th>
+                        <th className="text-center py-3 px-3 font-medium text-gray-700 min-w-20">收縮壓<br/><span className="text-xs font-normal">(mmHg)</span></th>
+                        <th className="text-center py-3 px-3 font-medium text-gray-700 min-w-20">舒張壓<br/><span className="text-xs font-normal">(mmHg)</span></th>
+                        <th className="text-center py-3 px-3 font-medium text-gray-700 min-w-16">心跳<br/><span className="text-xs font-normal">(/min)</span></th>
+                        <th className="text-center py-3 px-3 font-medium text-gray-700 min-w-20">血流量<br/><span className="text-xs font-normal">(ml/min)</span></th>
+                        <th className="text-center py-3 px-3 font-medium text-gray-700 min-w-20">脫水速度<br/><span className="text-xs font-normal">(L/hr)</span></th>
+                        <th className="text-center py-3 px-2 font-medium text-gray-700 min-w-16">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {processRecords.sort((a,b)=>a.time.localeCompare(b.time)).map((record,index)=>(
+                        <tr key={record.id} className={`border-b hover:bg-gray-50 ${index%2===0?'bg-white':'bg-gray-50'}`}>
+                          <td className="py-3 px-3"><div className="font-medium text-gray-800">{record.time}</div></td>
+                          <td className="py-3 px-3 text-center">
+                            <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${record.systolicBP>=160?'bg-red-100 text-red-800':record.systolicBP>=140?'bg-orange-100 text-orange-800':record.systolicBP>=90?'bg-green-100 text-green-800':'bg-blue-100 text-blue-800'}`}>{record.systolicBP}</span>
+                          </td>
+                          <td className="py-3 px-3 text-center">
+                            <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${record.diastolicBP>=100?'bg-red-100 text-red-800':record.diastolicBP>=90?'bg-orange-100 text-orange-800':record.diastolicBP>=60?'bg-green-100 text-green-800':'bg-blue-100 text-blue-800'}`}>{record.diastolicBP}</span>
+                          </td>
+                          <td className="py-3 px-3 text-center">
+                            <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${record.heartRate>=100?'bg-red-100 text-red-800':record.heartRate>=60?'bg-green-100 text-green-800':'bg-blue-100 text-blue-800'}`}>{record.heartRate}</span>
+                          </td>
+                          <td className="py-3 px-3 text-center"><span className="inline-block bg-orange-100 text-orange-800 px-2 py-1 rounded text-xs font-medium">{record.bloodFlow}</span></td>
+                          <td className="py-3 px-3 text-center">
+                            <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${record.fluidRemovalRate>=0.8?'bg-red-100 text-red-800':record.fluidRemovalRate>=0.5?'bg-orange-100 text-orange-800':'bg-blue-100 text-blue-800'}`}>{record.fluidRemovalRate}</span>
+                          </td>
+                          <td className="py-3 px-2">
+                            <div className="flex justify-center space-x-1">
+                              <button onClick={()=>{ let r={...record}; r.systolicBP=r.systolicBP||140; r.diastolicBP=r.diastolicBP||90; r.heartRate=r.heartRate||80; r.bloodFlow=r.bloodFlow||280; r.fluidRemovalRate=r.fluidRemovalRate||0.5; setEditingProcessRecord(r); setIsAddingProcessRecord(false); }} className="p-1 text-blue-600 hover:bg-blue-50 rounded"><Edit3 size={12} /></button>
+                              <button onClick={()=>deleteProcessRecord(record.id)} className="p-1 text-red-600 hover:bg-red-50 rounded"><Trash2 size={12} /></button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="bg-white rounded-lg shadow-sm p-6">
+                <h4 className="font-semibold mb-4 text-gray-800 flex items-center"><FileText className="mr-2" size={20} />護理記錄</h4>
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
+                    {(()=>{ const n=generateNursingNotes(processRecords); if(!n) return '無特殊處置記錄'; return n.split('、 ').filter(x=>x.trim()).map(x=>x.trim()+(x.endsWith('。')?'':'。')).join('\n'); })()}
+                  </div>
+                </div>
+                <div className="mt-3 text-xs text-gray-500"><p>透析病人: {selectedPatientForDialysis.name} | 透析日期: {selectedDialysisRecord.date}</p></div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white rounded-lg shadow-sm p-8 text-center">
+              <Table className="text-gray-400 mx-auto mb-4" size={48} />
+              <p className="text-gray-500 mb-4">尚未記錄透析過程監測</p>
+              <div className="space-y-2">
+                <button onClick={()=>addNewProcessRecord()} className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center mx-auto"><Plus size={16} className="mr-2" />新增當前時間記錄</button>
+                <button onClick={()=>setTimeMachineMode(true)} className="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 flex items-center mx-auto"><Clock size={16} className="mr-2" />使用時光機補記</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ===== DIALYSIS RECORDS VIEW =====
+  if (currentView==='dialysisRecords'&&selectedPatientForDialysis) {
+    const dialysisRecords=selectedPatientForDialysis.dialysisRecords||[];
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-white shadow-sm border-b p-4">
+          <div className="flex items-center justify-between">
+            <button onClick={()=>setCurrentView('patientList')} className="text-blue-600 hover:bg-blue-50 p-2 rounded"><X size={20} /></button>
+            <div className="text-center"><h1 className="text-lg font-semibold">透析紀錄</h1><ConnectionStatus /></div>
+            <button onClick={addNewDialysisRecord} className="text-green-600 hover:bg-green-50 p-2 rounded"><Plus size={20} /></button>
+          </div>
+        </div>
+        <div className="p-4 max-w-4xl mx-auto">
+          <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
+            <div className="flex items-center space-x-3">
+              <Activity className="text-green-600" size={24} />
+              <div><h3 className="font-semibold text-gray-800">{selectedPatientForDialysis.name}</h3><p className="text-sm text-gray-600">病歷號: {selectedPatientForDialysis.patientId} | 透析頻率: 週{selectedPatientForDialysis.frequency}次</p></div>
+            </div>
+          </div>
+          <ErrorAlert />
+
+          {editingDialysisRecord&&(
+            <div className="bg-white rounded-lg shadow-sm p-6 mb-4 border-l-4 border-green-500">
+              <h4 className="font-semibold mb-4 text-gray-800">{isAddingDialysisRecord?'新增透析記錄':'編輯透析記錄'}</h4>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                {[['透析日期','date','date'],['開始時間','startTime','time'],['結束時間','endTime','time'],['透析時間(小時)','duration','number'],['人工腎臟','artificialKidney','text'],['透析液','dialysate','text'],['肝素劑量(IU)','heparinDose','number'],['血流量(ml/min)','bloodFlow','number'],['透析前體重(kg)','preWeight','number'],['衣物重(kg)','clothingWeight','number'],['透析後體重(kg)','postWeight','number'],['乾體重(kg)','dryWeight','number'],['UF脫水量(L)','fluidRemoval','number'],['體溫(°C)','temperature','number']].map(([lbl,field,type])=>(
+                  <div key={field}>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{lbl}</label>
+                    {field==='startTime'||field==='endTime' ? (
+                      <input type="time" value={editingDialysisRecord[field]} onChange={e=>updateDialysisRecordField(field,e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" />
+                    ) : (
+                      <input type={type} step={['duration','preWeight','clothingWeight','postWeight','dryWeight','fluidRemoval','temperature'].includes(field)?'0.1':'1'} value={editingDialysisRecord[field]} onChange={e=>updateDialysisRecordField(field,type==='number'?(field==='duration'||field==='preWeight'||field==='clothingWeight'||field==='postWeight'||field==='dryWeight'||field==='fluidRemoval'||field==='temperature'?parseFloat(e.target.value)||0:parseInt(e.target.value)||0):e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" />
+                    )}
+                  </div>
+                ))}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">血管通路</label>
+                  <div className="flex space-x-1">
+                    <select value={editingDialysisRecord.accessSide} onChange={e=>updateDialysisRecordField('accessSide',e.target.value)} className="w-16 p-2 border border-gray-300 rounded-md text-xs"><option>左</option><option>右</option></select>
+                    <select value={editingDialysisRecord.accessLocation} onChange={e=>updateDialysisRecordField('accessLocation',e.target.value)} className="flex-1 p-2 border border-gray-300 rounded-md text-xs"><option>前臂</option><option>上臂</option><option>肩部</option></select>
+                    <select value={editingDialysisRecord.accessType} onChange={e=>updateDialysisRecordField('accessType',e.target.value)} className="w-20 p-2 border border-gray-300 rounded-md text-xs"><option>AVF</option><option>AVG</option><option>Permcath</option></select>
+                  </div>
+                </div>
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">備註</label>
+                <textarea value={editingDialysisRecord.notes} onChange={e=>updateDialysisRecordField('notes',e.target.value)} className="w-full p-2 border border-gray-300 rounded-md resize-none" rows="3" />
+              </div>
+              <div className="flex space-x-3">
+                <button onClick={saveDialysisRecord} className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center"><Save size={16} className="mr-1" />儲存</button>
+                <button onClick={()=>{ setEditingDialysisRecord(null); setIsAddingDialysisRecord(false); }} className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700">取消</button>
+              </div>
+            </div>
+          )}
+
+          {dialysisRecords.length>0 ? (
+            <div className="space-y-4">
+              {dialysisRecords.map(record=>(
+                <div key={record.id} className="bg-white rounded-lg shadow-sm p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center space-x-3 flex-wrap gap-y-1">
+                      <h4 className="font-semibold text-gray-800">{record.date}</h4>
+                      <span className="text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded">{record.startTime} - {record.endTime} ({record.duration}小時)</span>
+                      <span className="text-sm bg-purple-100 text-purple-800 px-2 py-1 rounded">{record.artificialKidney}</span>
+                      {record.processRecords&&record.processRecords.length>0&&<span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">過程記錄 {record.processRecords.length} 筆</span>}
+                    </div>
+                    <div className="flex space-x-2">
+                      <button onClick={()=>handleDialysisProcess(record)} className="p-2 text-green-600 hover:bg-green-50 rounded border border-green-200" title="透析過程紀錄"><TrendingUp size={16} /></button>
+                      <button onClick={()=>{ setEditingDialysisRecord(record); setIsAddingDialysisRecord(false); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded"><Edit3 size={16} /></button>
+                      <button onClick={()=>deleteDialysisRecord(record.id)} className="p-2 text-red-600 hover:bg-red-50 rounded"><Trash2 size={16} /></button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                    {[['透析前體重',`${record.preWeight} kg`,'gray'],['透析後體重',`${record.postWeight} kg`,'gray'],['UF脫水量',`${record.fluidRemoval} L`,'blue'],['乾體重',`${record.dryWeight} kg`,'green']].map(([lbl,val,c])=>(
+                      <div key={lbl} className={`bg-${c}-50 p-3 rounded`}><p className={`text-xs text-${c}-600 mb-1`}>{lbl}</p><p className={`font-semibold text-${c}-800`}>{val}</p></div>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                    {[['血流量',`${record.bloodFlow} ml/min`,'orange'],['肝素劑量',`${record.heparinDose} IU`,'red'],['血管通路',`${record.accessSide}${record.accessLocation} ${record.accessType}`,'indigo'],['體溫',`${record.temperature} °C`,'pink']].map(([lbl,val,c])=>(
+                      <div key={lbl} className={`bg-${c}-50 p-3 rounded`}><p className={`text-xs text-${c}-600 mb-1`}>{lbl}</p><p className={`font-semibold text-${c}-800`}>{val}</p></div>
+                    ))}
+                  </div>
+                  {record.notes&&<div className="bg-yellow-50 p-3 rounded border-l-4 border-yellow-400"><p className="text-sm font-medium text-yellow-800 mb-1">備註</p><p className="text-yellow-700">{record.notes}</p></div>}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-white rounded-lg shadow-sm p-8 text-center">
+              <Activity className="text-gray-400 mx-auto mb-4" size={48} />
+              <p className="text-gray-500 mb-4">目前沒有透析紀錄</p>
+              <button onClick={addNewDialysisRecord} className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center mx-auto"><Plus size={16} className="mr-2" />新增第一筆透析紀錄</button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ===== REMINDERS VIEW =====
+  if (currentView==='reminders'&&selectedPatientForReminders) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-white shadow-sm border-b p-4">
+          <div className="flex items-center justify-between">
+            <button onClick={()=>setCurrentView('patientList')} className="text-blue-600 hover:bg-blue-50 p-2 rounded"><X size={20} /></button>
+            <div className="text-center"><h1 className="text-lg font-semibold">提醒便條</h1><ConnectionStatus /></div>
+            <div className="flex space-x-2">
+              {editingNotes ? <button onClick={saveReminders} className="text-green-600 hover:bg-green-50 p-2 rounded border border-green-200"><Save size={20} /></button>
+              : <button onClick={()=>setEditingNotes(true)} className="text-blue-600 hover:bg-blue-50 p-2 rounded border border-blue-200"><Edit3 size={20} /></button>}
+            </div>
+          </div>
+        </div>
+        <div className="p-4 max-w-2xl mx-auto">
+          <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
+            <div className="flex items-center space-x-3"><Bell className="text-orange-600" size={24} /><div><h3 className="font-semibold text-gray-800">{selectedPatientForReminders.name}</h3><p className="text-sm text-gray-600">病歷號: {selectedPatientForReminders.patientId}</p></div></div>
+          </div>
+          <ErrorAlert />
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 rounded-lg shadow-lg">
+            <div className="bg-yellow-100 px-4 py-3 border-b border-yellow-200 rounded-t-lg">
+              <div className="flex items-center justify-between">
+                <h4 className="font-semibold text-yellow-800 flex items-center">📝 提醒便條</h4>
+                <div className="text-xs text-yellow-700">{editingNotes?'編輯模式':'檢視模式'}</div>
+              </div>
+            </div>
+            <div className="p-6">
+              {editingNotes ? (
+                <div>
+                  <textarea value={notesContent} onChange={e=>setNotesContent(e.target.value)} className="w-full h-96 p-4 bg-yellow-50 border-0 resize-none focus:ring-2 focus:ring-yellow-400 focus:outline-none text-gray-800 leading-relaxed" placeholder="在這裡寫下提醒事項、注意事項、預約時間等任何重要記住的內容..." style={{fontFamily:'serif',lineHeight:'28px'}} />
+                  <div className="flex justify-between items-center mt-4 pt-4 border-t border-yellow-200">
+                    <div className="text-xs text-yellow-700">最後編輯: {new Date().toLocaleString('zh-TW')}</div>
+                    <div className="flex space-x-3">
+                      <button onClick={saveReminders} className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center"><Save size={16} className="mr-2" />儲存便條</button>
+                      <button onClick={()=>{ setEditingNotes(false); setNotesContent(selectedPatientForReminders.reminders||''); }} className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700">取消</button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div className="min-h-96 p-4 text-gray-800 leading-relaxed whitespace-pre-line" style={{fontFamily:'serif',lineHeight:'28px'}}>{notesContent||'目前沒有提醒事項\n\n點擊右上角的編輯按鈕開始寫便條...'}</div>
+                  <div className="flex justify-between items-center mt-4 pt-4 border-t border-yellow-200">
+                    <div className="text-xs text-yellow-700">檢視模式 | 點擊右上角編輯按鈕修改</div>
+                    <button onClick={()=>setEditingNotes(true)} className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center"><Edit3 size={16} className="mr-2" />編輯便條</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ===== MEDICATION HISTORY VIEW =====
+  if (currentView==='medicationHistory'&&selectedPatientForMeds) {
+    const medications=selectedPatientForMeds.medications||[];
+    const historyData=selectedPatientForMeds.medicationHistory||{};
+    const yearHistory=historyData[selectedYear]||{};
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-white shadow-sm border-b p-4">
+          <div className="flex items-center justify-between">
+            <button onClick={()=>setCurrentView('medications')} className="text-blue-600 hover:bg-blue-50 p-2 rounded"><X size={20} /></button>
+            <div className="text-center"><h1 className="text-lg font-semibold">藥物歷史紀錄</h1><ConnectionStatus /></div>
+            <div></div>
+          </div>
+        </div>
+        <div className="p-4 max-w-4xl mx-auto">
+          <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3"><Calendar className="text-purple-600" size={24} /><div><h3 className="font-semibold text-gray-800">{selectedPatientForMeds.name}</h3><p className="text-sm text-gray-600">病歷號: {selectedPatientForMeds.patientId}</p></div></div>
+              <select value={selectedYear} onChange={e=>setSelectedYear(parseInt(e.target.value))} className="p-2 border border-gray-300 rounded text-sm">
+                {getAvailableYears().map(y=><option key={y} value={y}>{y}年</option>)}
+              </select>
+            </div>
+          </div>
+          {medications.length>0 ? (
+            <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th className="text-left py-3 px-4 font-medium text-gray-700 min-w-40">藥物名稱</th>
+                      <th className="text-left py-3 px-3 font-medium text-gray-700">劑量</th>
+                      {Array.from({length:12},(_,i)=><th key={i+1} className="text-center py-3 px-2 font-medium text-gray-700 min-w-12">{getMonthName(i+1)}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {medications.map((med,idx)=>{ const medH=yearHistory[med.id]||{}; return (
+                      <tr key={med.id} className={`border-b hover:bg-gray-50 ${idx%2===0?'bg-white':'bg-gray-50'}`}>
+                        <td className="py-3 px-4"><div className="font-medium text-gray-800">{med.drugName}</div><div className="text-xs text-gray-500">{med.hospital}</div></td>
+                        <td className="py-3 px-3"><span className="text-gray-700">{med.dosage} {med.unit}</span></td>
+                        {Array.from({length:12},(_,i)=>{ const m=i+1; const status=medH[m]; const isFuture=selectedYear===new Date().getFullYear()&&m>new Date().getMonth()+1; return (
+                          <td key={m} className="py-3 px-2 text-center">
+                            {isFuture ? <span className="text-gray-300">-</span> : (
+                              <span className={`inline-flex items-center justify-center w-8 h-6 rounded text-xs font-bold ${status==='prescribed'?'bg-green-100 text-green-800':status==='remaining'?'bg-orange-100 text-orange-800':status==='discontinued'?'bg-red-100 text-red-800':'bg-gray-100 text-gray-400'}`}>
+                                {status==='prescribed'?'✅':status==='remaining'?'🪣':status==='discontinued'?'DC':'-'}
+                              </span>
+                            )}
+                          </td>
+                        );})}
+                      </tr>
+                    );})}
+                  </tbody>
+                </table>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 border-t">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-600">共 {medications.length} 種藥物 | {selectedYear}年度記錄</span>
+                  <div className="flex space-x-4">
+                    <span className="flex items-center"><span className="w-4 h-4 bg-green-100 text-green-800 rounded text-xs font-bold flex items-center justify-center mr-1">✅</span>已領立</span>
+                    <span className="flex items-center"><span className="w-4 h-4 bg-orange-100 text-orange-800 rounded text-xs font-bold flex items-center justify-center mr-1">🪣</span>有餘藥</span>
+                    <span className="flex items-center"><span className="w-4 h-4 bg-red-100 text-red-800 rounded text-xs font-bold flex items-center justify-center mr-1">DC</span>已停藥</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white rounded-lg shadow-sm p-8 text-center"><Calendar className="text-gray-400 mx-auto mb-4" size={48} /><p className="text-gray-500">目前沒有藥物歷史紀錄</p></div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ===== MEDICATIONS VIEW =====
+  if (currentView==='medications'&&selectedPatientForMeds) {
+    const medications=selectedPatientForMeds.medications||[];
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-white shadow-sm border-b p-4">
+          <div className="flex items-center justify-between">
+            <button onClick={()=>setCurrentView('patientList')} className="text-blue-600 hover:bg-blue-50 p-2 rounded"><X size={20} /></button>
+            <div className="text-center"><h1 className="text-lg font-semibold">藥物管理</h1><ConnectionStatus /></div>
+            <div className="flex space-x-2">
+              <button onClick={()=>setCurrentView('medicationHistory')} className="text-blue-600 hover:bg-blue-50 p-2 rounded border border-blue-200"><Calendar size={20} /></button>
+              <button onClick={addNewMedication} className="text-green-600 hover:bg-green-50 p-2 rounded border border-green-200"><Plus size={20} /></button>
+            </div>
+          </div>
+        </div>
+        <div className="p-4 max-w-2xl mx-auto">
+          <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
+            <div className="flex items-center space-x-3"><Pill className="text-purple-600" size={24} /><div><h3 className="font-semibold text-gray-800">{selectedPatientForMeds.name}</h3><p className="text-sm text-gray-600">病歷號: {selectedPatientForMeds.patientId}</p></div></div>
+            {selectedPatientForMeds.drugAllergies&&selectedPatientForMeds.drugAllergies!=='無已知過敏'&&!isEditingAllergy&&(
+              <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded">
+                <div className="flex items-center justify-between"><p className="text-red-700 text-sm font-medium">⚠️ 藥物過敏: {selectedPatientForMeds.drugAllergies}</p><button onClick={()=>setIsEditingAllergy(true)} className="text-red-600 hover:bg-red-100 p-1 rounded"><Edit3 size={14} /></button></div>
+              </div>
+            )}
+            {(!selectedPatientForMeds.drugAllergies||selectedPatientForMeds.drugAllergies==='無已知過敏')&&!isEditingAllergy&&(
+              <div className="mt-3 p-2 bg-gray-50 border border-gray-200 rounded">
+                <div className="flex items-center justify-between"><p className="text-gray-600 text-sm">無已知藥物過敏</p><button onClick={()=>setIsEditingAllergy(true)} className="text-blue-600 hover:bg-blue-100 p-1 rounded"><Edit3 size={14} /></button></div>
+              </div>
+            )}
+            {isEditingAllergy&&(
+              <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded">
+                <label className="block text-sm font-medium text-gray-700 mb-2">編輯藥物過敏史</label>
+                <div className="flex space-x-2">
+                  <input type="text" value={selectedPatientForMeds.drugAllergies||''} onChange={e=>setSelectedPatientForMeds(prev=>({...prev,drugAllergies:e.target.value}))} className="flex-1 p-2 border border-gray-300 rounded text-sm" placeholder="請輸入藥物過敏史，若無過敏請填寫「無已知過敏」" />
+                  <button onClick={saveAllergy} className="bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700">儲存</button>
+                  <button onClick={()=>setIsEditingAllergy(false)} className="bg-gray-600 text-white px-3 py-2 rounded text-sm hover:bg-gray-700">取消</button>
+                </div>
+              </div>
+            )}
+          </div>
+          <ErrorAlert />
+
+          {editingMed&&(
+            <div className="bg-white rounded-lg shadow-sm p-6 mb-4 border-l-4 border-green-500">
+              <h4 className="font-semibold mb-4 text-gray-800">{isAddingMed?'新增藥物':'編輯藥物'}</h4>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">藥物名稱 *</label><input type="text" value={editingMed.drugName} onChange={e=>updateMedicationField('drugName',e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" placeholder="請輸入藥物名稱" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">領立醫院 *</label><input type="text" value={editingMed.hospital} onChange={e=>updateMedicationField('hospital',e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" placeholder="請輸入領立醫院" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">劑量 *</label><div className="flex space-x-2"><input type="number" value={editingMed.dosage} onChange={e=>updateMedicationField('dosage',e.target.value)} className="flex-1 p-2 border border-gray-300 rounded-md" /><select value={editingMed.unit} onChange={e=>updateMedicationField('unit',e.target.value)} className="w-20 p-2 border border-gray-300 rounded-md">{['mg','mcg','g','IU','unit','ml'].map(u=><option key={u}>{u}</option>)}</select></div></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">顆數/瓶數</label><input type="number" value={editingMed.quantity} onChange={e=>updateMedicationField('quantity',parseInt(e.target.value)||0)} className="w-full p-2 border border-gray-300 rounded-md" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">服用頻率</label><select value={editingMed.frequency} onChange={e=>updateMedicationField('frequency',e.target.value)} className="w-full p-2 border border-gray-300 rounded-md">{['每日一次','每日兩次','每日三次','每日四次','每週一次','每週兩次','每週三次','需要時使用'].map(f=><option key={f}>{f}</option>)}</select></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">當月領立狀態</label><select value={editingMed.monthlyStatus} onChange={e=>updateMedicationField('monthlyStatus',e.target.value)} className="w-full p-2 border border-gray-300 rounded-md"><option value="prescribed">已領立 ✅</option><option value="remaining">有餘藥未領 🪣</option><option value="discontinued">停止領立 DC</option></select></div>
+              </div>
+              <div className="flex space-x-3">
+                <button onClick={saveMedication} className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center"><Save size={16} className="mr-1" />儲存</button>
+                <button onClick={()=>{ setEditingMed(null); setIsAddingMed(false); }} className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700">取消</button>
+              </div>
+            </div>
+          )}
+
+          {medications.length>0 ? (
+            <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th className="text-left py-3 px-3 font-medium text-gray-700">藥物名稱</th>
+                      <th className="text-left py-3 px-3 font-medium text-gray-700">劑量</th>
+                      <th className="text-center py-3 px-2 font-medium text-gray-700">顆數</th>
+                      <th className="text-left py-3 px-3 font-medium text-gray-700">頻率</th>
+                      <th className="text-center py-3 px-2 font-medium text-gray-700">狀態</th>
+                      <th className="text-left py-3 px-3 font-medium text-gray-700">醫院</th>
+                      <th className="text-center py-3 px-2 font-medium text-gray-700">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {medications.map((med,idx)=>(
+                      <tr key={med.id} className={`border-b hover:bg-gray-50 ${idx%2===0?'bg-white':'bg-gray-50'}`}>
+                        <td className="py-2 px-3"><div className="font-medium text-gray-800">{med.drugName}</div><div className="text-xs text-gray-500">更新: {med.lastUpdated}</div></td>
+                        <td className="py-2 px-3"><span className="font-medium">{med.dosage}</span><span className="text-gray-600 ml-1">{med.unit}</span></td>
+                        <td className="py-2 px-2 text-center"><span className="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-medium">{med.quantity}</span></td>
+                        <td className="py-2 px-3"><span className="text-gray-700">{med.frequency}</span></td>
+                        <td className="py-2 px-2 text-center"><span className={`inline-block px-2 py-1 rounded text-xs font-medium ${getStatusColor(med.monthlyStatus)}`}>{getStatusIcon(med.monthlyStatus)}</span></td>
+                        <td className="py-2 px-3"><span className="text-gray-700 text-xs">{med.hospital}</span></td>
+                        <td className="py-2 px-2"><div className="flex justify-center space-x-1"><button onClick={()=>{ setEditingMed(med); setIsAddingMed(false); }} className="p-1 text-blue-600 hover:bg-blue-50 rounded"><Edit3 size={14} /></button><button onClick={()=>deleteMedication(med.id)} className="p-1 text-red-600 hover:bg-red-50 rounded"><Trash2 size={14} /></button></div></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="bg-gray-50 px-4 py-2 border-t">
+                <div className="flex justify-between items-center text-sm text-gray-600">
+                  <span>共 {medications.length} 種藥物</span>
+                  <div className="flex space-x-4">
+                    <span>已領: {medications.filter(m=>m.monthlyStatus==='prescribed').length}</span>
+                    <span>有餘: {medications.filter(m=>m.monthlyStatus==='remaining').length}</span>
+                    <span>已停: {medications.filter(m=>m.monthlyStatus==='discontinued').length}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white rounded-lg shadow-sm p-8 text-center"><Pill className="text-gray-400 mx-auto mb-4" size={48} /><p className="text-gray-500 mb-4">目前沒有藥物記錄</p><button onClick={addNewMedication} className="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 flex items-center mx-auto"><Plus size={16} className="mr-2" />新增第一個藥物</button></div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ===== PATIENT LIST VIEW =====
+  if (currentView==='patientList') {
+    const filteredPatients=getFilteredPatients();
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-white shadow-sm border-b p-4">
+          <div className="flex items-center justify-between">
+            <button onClick={()=>setCurrentView('scanner')} className="text-blue-600 hover:bg-blue-50 p-2 rounded"><X size={20} /></button>
+            <div className="text-center"><h1 className="text-lg font-semibold">病人列表</h1><ConnectionStatus /></div>
+            <button onClick={()=>setCurrentView('scanner')} className="text-gray-600 hover:bg-gray-50 p-2 rounded"><Camera size={20} /></button>
+          </div>
+        </div>
+        <div className="p-4 max-w-2xl mx-auto">
+          <ErrorAlert />
+          <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2">
+                <Search className="text-gray-400" size={20} />
+                <input type="text" placeholder="搜尋病人姓名、病歷號或身份證字號..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} className="flex-1 p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div className="flex space-x-2">
+                <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-md text-sm">
+                  <option value="all">全部病人</option><option value="active">使用中</option><option value="inactive">已暫停</option>
+                </select>
+                <div className="flex-1 text-right text-sm text-gray-600 flex items-center justify-end"><Users className="mr-1" size={16} />共 {filteredPatients.length} 位病人</div>
+              </div>
+            </div>
+          </div>
+
+          {filteredPatients.length>0 ? (
+            <div className="space-y-2">
+              {filteredPatients.map(patient=>(
+                <div key={patient.patientId} className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-blue-500">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1 cursor-pointer hover:bg-blue-50 p-2 rounded transition-colors" onClick={()=>handleSelectPatient(patient)}>
+                      <div className="flex items-center space-x-3 flex-wrap gap-y-1">
+                        <h3 className="font-semibold text-gray-800">{patient.name}</h3>
+                        <span className="text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded">{patient.patientId}</span>
+                        <span className={`text-xs px-2 py-1 rounded ${patient.isActive!==false?'bg-green-100 text-green-800':'bg-gray-100 text-gray-600'}`}>{patient.isActive!==false?'使用中':'已暫停'}</span>
+                      </div>
+                      <div className="mt-2 space-y-1 text-sm text-gray-600">
+                        <div className="flex items-center space-x-4"><span>性別: {patient.gender}</span><span>血型: {patient.bloodType||'N/A'}</span><span>頻率: 週{patient.frequency||3}次</span></div>
+                        <div className="flex items-center space-x-4"><span>血管通路: {patient.accessSide}{patient.accessLocation} {patient.accessType}</span><span>乾體重: {patient.dw||0}kg</span></div>
+                        {patient.drugAllergies&&patient.drugAllergies!=='無已知過敏'&&<div className="flex items-center text-red-600 font-medium"><AlertCircle size={14} className="mr-1" />過敏: {patient.drugAllergies}</div>}
+                        <div className="flex items-center space-x-4 text-xs">
+                          {patient.medications&&patient.medications.length>0&&<span className="flex items-center text-blue-600"><Pill size={12} className="mr-1" />用藥: {patient.medications.length} 種</span>}
+                          {patient.dialysisRecords&&patient.dialysisRecords.length>0&&<span className="flex items-center text-green-600"><Activity size={12} className="mr-1" />透析: {patient.dialysisRecords.length} 次記錄</span>}
+                          {patient.reminders&&patient.reminders.trim()&&<span className="flex items-center text-orange-600"><Bell size={12} className="mr-1" />提醒: 有記事</span>}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-col space-y-1 ml-2">
+                      <div className="flex space-x-1">
+                        <button onClick={()=>handleMedicationManagement(patient)} className="p-2 text-purple-600 hover:bg-purple-50 rounded border border-purple-200" title="藥物管理"><Pill size={14} /></button>
+                        <button onClick={()=>handleDialysisRecords(patient)} className="p-2 text-green-600 hover:bg-green-50 rounded border border-green-200" title="透析紀錄"><Activity size={14} /></button>
+                      </div>
+                      <div className="flex space-x-1">
+                        <button onClick={()=>handleReminders(patient)} className="p-2 text-orange-600 hover:bg-orange-50 rounded border border-orange-200" title="提醒事項"><Bell size={14} /></button>
+                        <div className="p-2 text-gray-400 cursor-pointer" onClick={()=>handleSelectPatient(patient)}><Edit3 size={14} /></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-white rounded-lg shadow-sm p-8 text-center">
+              <Users className="text-gray-400 mx-auto mb-4" size={48} />
+              <p className="text-gray-500 mb-2">{searchTerm?'找不到符合條件的病人':'目前沒有病人資料'}</p>
+              {searchTerm&&<button onClick={()=>setSearchTerm('')} className="text-blue-600 hover:text-blue-800 text-sm">清除搜尋條件</button>}
+            </div>
+          )}
+
+          <div className="mt-6 grid grid-cols-2 gap-3">
+            <button onClick={()=>{ setCurrentPatient({ patientId:`P${Date.now().toString().slice(-6)}`, name:'', gender:'男', birthday:'', idNumber:'', frequency:3, duration:4, ak:'', dialysate:'', accessSide:'左', accessLocation:'前臂', accessType:'AVF', heparinDose:0, bloodFlow:0, dw:0, bloodType:'', chronicDiseases:'', drugAllergies:'', firstDialysisHospital:'', firstDialysisDate:'', medications:[], medicationHistory:{}, dialysisRecords:[], reminders:'' }); setIsNewPatient(true); setCurrentView('patient'); setHistory([]); }} className="bg-purple-600 text-white py-3 rounded-md hover:bg-purple-700 flex items-center justify-center">
+              <User className="mr-2" size={20} />新增病人
+            </button>
+            <button onClick={()=>setCurrentView('scanner')} className="bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 flex items-center justify-center">
+              <Camera className="mr-2" size={20} />掃描QR Code
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ===== PATIENT VIEW =====
+  if (currentView==='patient'&&currentPatient) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-white shadow-sm border-b p-4">
+          <div className="flex items-center justify-between">
+            <button onClick={()=>setCurrentView('patientList')} className="text-blue-600 hover:bg-blue-50 p-2 rounded"><X size={20} /></button>
+            <div className="text-center"><h1 className="text-lg font-semibold">{isNewPatient?'新增病人':currentPatient.name}</h1><ConnectionStatus /></div>
+            <div className="flex space-x-2">
+              {!isNewPatient&&<>
+                <button onClick={()=>{ setSelectedPatientForMeds(currentPatient); setCurrentView('medications'); }} className="text-purple-600 hover:bg-purple-50 p-2 rounded" title="藥物管理"><Pill size={20} /></button>
+                <button onClick={()=>setCurrentView('background')} className="text-gray-600 hover:bg-gray-50 p-2 rounded" title="背景資料"><FileText size={20} /></button>
+                <button onClick={()=>setCurrentView('history')} className="text-gray-600 hover:bg-gray-50 p-2 rounded" title="歷史紀錄"><History size={20} /></button>
+                <button onClick={handleExport} className="text-gray-600 hover:bg-gray-50 p-2 rounded" title="匯出資料"><Download size={20} /></button>
+              </>}
+            </div>
+          </div>
+        </div>
+        <div className="p-4 max-w-md mx-auto">
+          <ErrorAlert />
+          {isNewPatient&&<div className="bg-blue-50 border border-blue-200 rounded-md p-4 mb-6"><div className="flex items-center"><User className="text-blue-500 mr-2" size={20} /><span className="text-blue-700 font-medium">正在建立新病人資料</span></div><p className="text-blue-600 text-sm mt-1">請填寫完整的病人資訊</p></div>}
+          <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+            <h3 className="text-lg font-semibold mb-4 text-gray-800">基本資料</h3>
+            <EditableField label="病歷號" field="patientId" value={currentPatient.patientId} type="text" disabled={!isNewPatient} />
+            <EditableField label="姓名" field="name" value={currentPatient.name} />
+            <EditableField label="性別" field="gender" value={currentPatient.gender} options={['男','女']} />
+            <EditableField label="生日" field="birthday" value={currentPatient.birthday} type="date" />
+            <EditableField label="身份證字號" field="idNumber" value={currentPatient.idNumber} />
+          </div>
+          <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+            <h3 className="text-lg font-semibold mb-4 text-gray-800">透析設定</h3>
+            <EditableField label="頻率 (次/週)" field="frequency" value={currentPatient.frequency||3} type="number" />
+            <EditableField label="時間 (小時)" field="duration" value={currentPatient.duration||4} type="number" />
+            <EditableField label="人工腎臟型號" field="ak" value={currentPatient.ak||''} />
+            <EditableField label="透析液" field="dialysate" value={currentPatient.dialysate||''} />
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">血管通路</label>
+              <div className="grid grid-cols-3 gap-2">
+                <EditableField label="左/右" field="accessSide" value={currentPatient.accessSide||'左'} options={['左','右']} />
+                <EditableField label="部位" field="accessLocation" value={currentPatient.accessLocation||'前臂'} options={['前臂','上臂','肩部']} />
+                <EditableField label="類型" field="accessType" value={currentPatient.accessType||'AVF'} options={['AVF','AVG','Permcath']} />
+              </div>
+            </div>
+            <EditableField label="肝素劑量 (IU)" field="heparinDose" value={currentPatient.heparinDose||0} type="number" />
+            <EditableField label="血流量 (ml/min)" field="bloodFlow" value={currentPatient.bloodFlow||0} type="number" />
+            <EditableField label="乾體重 (kg)" field="dw" value={currentPatient.dw||0} type="number" />
+          </div>
+          {isNewPatient ? (
+            <button onClick={handleCreatePatient} disabled={loading} className="w-full bg-green-600 text-white py-3 rounded-md hover:bg-green-700 flex items-center justify-center disabled:bg-gray-400">
+              <User className="mr-2" size={20} />{loading?'建立中...':'建立病人資料'}
+            </button>
+          ) : (
+            <button onClick={handleSave} disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 flex items-center justify-center disabled:bg-gray-400">
+              <Save className="mr-2" size={20} />{loading?'儲存中...':'儲存變更'}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ===== BACKGROUND VIEW =====
+  if (currentView==='background'&&currentPatient) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-white shadow-sm border-b p-4">
+          <div className="flex items-center justify-between">
+            <button onClick={()=>setCurrentView('patient')} className="text-blue-600 hover:bg-blue-50 p-2 rounded"><X size={20} /></button>
+            <div className="text-center"><h1 className="text-lg font-semibold">背景資料</h1><ConnectionStatus /></div>
+            <div></div>
+          </div>
+        </div>
+        <div className="p-4 max-w-md mx-auto">
+          <div className="bg-white rounded-lg shadow-sm p-4 mb-4"><h3 className="font-semibold mb-2">{currentPatient.name} ({currentPatient.patientId})</h3></div>
+          <ErrorAlert />
+          <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+            <h3 className="text-lg font-semibold mb-4 text-gray-800 flex items-center"><FileText className="mr-2 text-blue-600" size={20} />醫療背景資料</h3>
+            <EditableField label="血型" field="bloodType" value={currentPatient.bloodType||''} options={['A+','A-','B+','B-','AB+','AB-','O+','O-']} />
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">慢性疾病</label>
+              <div className="flex items-center">
+                {editingField==='chronicDiseases' ? (
+                  <div className="flex items-center w-full">
+                    <textarea value={currentPatient.chronicDiseases||''} onChange={e=>updateField('chronicDiseases',e.target.value)} className="flex-1 p-2 border border-gray-300 rounded-md resize-none" rows="3" placeholder="請輸入慢性疾病，以逗號分隔" />
+                    <button onClick={()=>setEditingField(null)} className="ml-2 p-2 text-green-600 hover:bg-green-50 rounded"><Check size={16} /></button>
+                  </div>
+                ) : (
+                  <div className="flex items-center w-full">
+                    <span className="flex-1 p-2 rounded-md bg-gray-50 min-h-10 whitespace-pre-wrap">{currentPatient.chronicDiseases||'N/A'}</span>
+                    <button onClick={()=>setEditingField('chronicDiseases')} className="ml-2 p-2 text-blue-600 hover:bg-blue-50 rounded"><Edit3 size={16} /></button>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">藥物過敏史</label>
+              <div className="flex items-center">
+                {editingField==='drugAllergies' ? (
+                  <div className="flex items-center w-full">
+                    <textarea value={currentPatient.drugAllergies||''} onChange={e=>updateField('drugAllergies',e.target.value)} className="flex-1 p-2 border border-gray-300 rounded-md resize-none" rows="2" placeholder="請輸入藥物過敏史，若無過敏請填寫「無已知過敏」" />
+                    <button onClick={()=>setEditingField(null)} className="ml-2 p-2 text-green-600 hover:bg-green-50 rounded"><Check size={16} /></button>
+                  </div>
+                ) : (
+                  <div className="flex items-center w-full">
+                    <span className="flex-1 p-2 rounded-md bg-gray-50 min-h-8 whitespace-pre-wrap">{currentPatient.drugAllergies||'N/A'}</span>
+                    <button onClick={()=>setEditingField('drugAllergies')} className="ml-2 p-2 text-blue-600 hover:bg-blue-50 rounded"><Edit3 size={16} /></button>
+                  </div>
+                )}
+              </div>
+              {currentPatient.drugAllergies&&<div className="mt-2 p-2 bg-red-50 border border-red-200 rounded"><p className="text-red-700 text-sm font-medium">⚠️ 注意：此病人有藥物過敏史</p></div>}
+            </div>
+            <EditableField label="首次透析院所" field="firstDialysisHospital" value={currentPatient.firstDialysisHospital||''} />
+            <EditableField label="首次透析時間" field="firstDialysisDate" value={currentPatient.firstDialysisDate||''} type="date" />
+            {currentPatient.firstDialysisDate&&(
+              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded">
+                <p className="text-blue-700 text-sm"><strong>透析年資：</strong>{(()=>{ const s=new Date(currentPatient.firstDialysisDate); const c=new Date(); const y=Math.floor((c-s)/(365.25*24*60*60*1000)); const m=Math.floor(((c-s)%(365.25*24*60*60*1000))/(30.44*24*60*60*1000)); return `約 ${y} 年 ${m} 個月`; })()}</p>
+              </div>
+            )}
+          </div>
+          <div className="flex space-x-3 mb-6">
+            <button onClick={handleSave} disabled={loading} className="flex-1 bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 flex items-center justify-center disabled:bg-gray-400"><Save className="mr-2" size={20} />{loading?'儲存中...':'儲存背景資料'}</button>
+            <button onClick={editMedicationFromBackground} className="bg-purple-600 text-white py-3 px-4 rounded-md hover:bg-purple-700 flex items-center justify-center"><Pill className="mr-2" size={20} />藥物管理</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ===== HISTORY VIEW =====
+  if (currentView==='history'&&currentPatient) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-white shadow-sm border-b p-4">
+          <div className="flex items-center justify-between">
+            <button onClick={()=>setCurrentView('patient')} className="text-blue-600 hover:bg-blue-50 p-2 rounded"><X size={20} /></button>
+            <div className="text-center"><h1 className="text-lg font-semibold">歷史紀錄</h1><ConnectionStatus /></div>
+            <div></div>
+          </div>
+        </div>
+        <div className="p-4 max-w-md mx-auto">
+          <div className="bg-white rounded-lg shadow-sm p-4 mb-4"><h3 className="font-semibold mb-2">{currentPatient.name} ({currentPatient.patientId})</h3></div>
+          {history.length>0 ? (
+            <div className="space-y-3">
+              {history.map((record,index)=>(
+                <div key={index} className="bg-white rounded-lg shadow-sm p-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <div><span className="font-medium text-gray-800">{record.date}</span><span className="text-sm text-gray-500 ml-2">{record.time}</span></div>
+                    <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">{record.operator}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {Object.entries(record.changes).map(([field,change])=>(
+                      <div key={field} className="text-sm bg-gray-50 p-2 rounded">
+                        <span className="font-medium text-gray-700">{fieldNames[field]||field}:</span>
+                        <span className="text-red-600 line-through ml-2">{change.old}</span>
+                        <span className="text-green-600 ml-2">→ {change.new}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {record.notes&&<div className="mt-2 text-xs text-gray-600">備註: {record.notes}</div>}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-white rounded-lg shadow-sm p-8 text-center"><History className="text-gray-400 mx-auto mb-2" size={48} /><p className="text-gray-500">暫無歷史紀錄</p></div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+};
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<DialysisPatientSystem />);
+</script>
+</body>
+</html>
