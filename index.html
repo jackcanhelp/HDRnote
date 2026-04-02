@@ -27,52 +27,50 @@ const {
 
 const { useState, useEffect, useRef } = React;
 
-// 密碼：僅存 SHA-256 雜湊，原始密碼不出現在程式碼中
-// 雜湊值 = SHA-256('JJ20200304')
-const PASSWORD_HASH = 'a2bbe2e8270a82a1c99cb4567e9dae89cf7afbe039e98a893b8d66a1d05fd435';
-
-async function sha256(str) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-// 資料存取：本地跑 server.py 時存 patients.json；GitHub Pages 時存 localStorage
-const IS_LOCAL = ['localhost', '127.0.0.1'].includes(window.location.hostname) ||
-                 /^192\.168\./.test(window.location.hostname) ||
-                 /^10\./.test(window.location.hostname);
-const LOCAL_API = IS_LOCAL ? `${window.location.protocol}//${window.location.host}` : null;
+// 密碼存在 server 端 secrets.bat，前端只負責傳送，不做任何本地比對
+// session 期間把密碼存在 sessionStorage（分頁關閉自動清除）
+let SESSION_PW = sessionStorage.getItem('hdr_pw') || '';
 
 const storage = {
+  // 取得病人資料（帶密碼 header）
   getPatients: async () => {
-    if (LOCAL_API) {
-      try {
-        const r = await fetch(`${LOCAL_API}/api/patients`);
-        if (r.ok) { const d = await r.json(); if (d) return d; }
-      } catch {}
-    }
-    try { return JSON.parse(localStorage.getItem('hdr_patients')) || null; } catch { return null; }
+    if (!SESSION_PW) return null;
+    try {
+      const r = await fetch('/api/patients', { headers: { 'X-Password': SESSION_PW } });
+      if (r.ok) return await r.json();
+      if (r.status === 401) storage.clearSession();
+    } catch {}
+    return null;
   },
+  // 儲存病人資料
   savePatients: async (data) => {
-    if (LOCAL_API) {
-      try {
-        await fetch(`${LOCAL_API}/api/patients`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-        });
-      } catch {}
-    }
-    try { localStorage.setItem('hdr_patients', JSON.stringify(data)); } catch {}
+    if (!SESSION_PW) return;
+    try {
+      await fetch('/api/patients', {
+        method: 'POST',
+        headers: { 'X-Password': SESSION_PW, 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+    } catch {}
   },
-  getSession: () => { try { return JSON.parse(sessionStorage.getItem('hdr_session')); } catch { return null; } },
-  saveSession: (data) => { try { sessionStorage.setItem('hdr_session', JSON.stringify(data)); } catch {} },
-  clearSession: () => { try { sessionStorage.removeItem('hdr_session'); } catch {} },
+  // 驗證密碼（問 server），回傳 {ok, online}
+  verifyPassword: async (pw) => {
+    try {
+      const r = await fetch('/api/patients', { headers: { 'X-Password': pw } });
+      return { ok: r.status !== 401, online: true };
+    } catch {
+      return { ok: false, online: false };
+    }
+  },
+  setSession: (pw) => { SESSION_PW = pw; sessionStorage.setItem('hdr_pw', pw); },
+  clearSession: () => { SESSION_PW = ''; sessionStorage.removeItem('hdr_pw'); },
 };
 
 const DialysisPatientSystem = () => {
-  const [appUnlocked, setAppUnlocked] = useState(() => !!storage.getSession());
+  const [appUnlocked, setAppUnlocked] = useState(!!SESSION_PW);
   const [pwInput, setPwInput] = useState('');
-  const [pwError, setPwError] = useState(false);
+  const [pwError, setPwError] = useState(''); // '' | 'wrong' | 'offline'
+  const [pwChecking, setPwChecking] = useState(false);
   const [currentView, setCurrentView] = useState('login');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [authToken, setAuthToken] = useState('');
@@ -82,6 +80,7 @@ const DialysisPatientSystem = () => {
   const [patients, setPatients] = useState([]);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
   const [error, setError] = useState('');
   const [cameraStream, setCameraStream] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
@@ -319,14 +318,17 @@ const DialysisPatientSystem = () => {
   };
 
   useEffect(() => {
-    storage.getPatients().then(saved => setPatients(saved || TEST_PATIENTS));
+    storage.getPatients().then(saved => {
+      setPatients(saved || TEST_PATIENTS);
+      setIsInitialized(true);
+    });
     return () => { if (cameraStream) cameraStream.getTracks().forEach(t => t.stop()); };
   }, [cameraStream]);
 
-  // patients 有變動時自動存到 localStorage
+  // patients 變動時自動上傳至 server（初始載入不觸發）
   useEffect(() => {
-    if (patients.length > 0) storage.savePatients(patients);
-  }, [patients]);
+    if (isInitialized && patients.length > 0) storage.savePatients(patients);
+  }, [patients, isInitialized]);
 
   const apiRequest = async (endpoint, options = {}) => {
     try {
@@ -774,13 +776,18 @@ const DialysisPatientSystem = () => {
   // ===== PASSWORD GATE =====
   if (!appUnlocked) {
     const handleUnlock = async () => {
-      const hash = await sha256(pwInput);
-      if (hash === PASSWORD_HASH) {
-        storage.saveSession({ unlocked: true });
+      if (pwChecking) return;
+      setPwChecking(true);
+      setPwError('');
+      const { ok, online } = await storage.verifyPassword(pwInput);
+      setPwChecking(false);
+      if (!online) {
+        setPwError('offline');
+      } else if (ok) {
+        storage.setSession(pwInput);
         setAppUnlocked(true);
-        setPwError(false);
       } else {
-        setPwError(true);
+        setPwError('wrong');
         setPwInput('');
       }
     };
@@ -798,16 +805,18 @@ const DialysisPatientSystem = () => {
             <input
               type="password"
               value={pwInput}
-              onChange={e=>{ setPwInput(e.target.value); setPwError(false); }}
+              onChange={e=>{ setPwInput(e.target.value); setPwError(''); }}
               onKeyPress={e=>e.key==='Enter'&&handleUnlock()}
-              className={`w-full p-4 text-center text-xl tracking-widest border-2 rounded-xl focus:outline-none ${pwError?'border-red-400 bg-red-50':'border-gray-200 focus:border-blue-400'}`}
+              className={`w-full p-4 text-center text-xl tracking-widest border-2 rounded-xl focus:outline-none ${pwError==='wrong'?'border-red-400 bg-red-50':pwError==='offline'?'border-yellow-400 bg-yellow-50':'border-gray-200 focus:border-blue-400'}`}
               placeholder="••••••••••"
               autoFocus
+              disabled={pwChecking}
             />
-            {pwError && <p className="text-red-500 text-sm text-center mt-2">密碼錯誤，請再試一次</p>}
+            {pwError==='wrong'   && <p className="text-red-500 text-sm text-center mt-2">密碼錯誤，請再試一次</p>}
+            {pwError==='offline' && <p className="text-yellow-600 text-sm text-center mt-2">⚠️ 無法連線至伺服器<br/>請確認已執行 start.bat</p>}
           </div>
-          <button onClick={handleUnlock} className="w-full bg-blue-600 text-white py-4 rounded-xl text-lg font-semibold hover:bg-blue-700 active:bg-blue-800 transition-colors">
-            進入系統
+          <button onClick={handleUnlock} disabled={pwChecking} className="w-full bg-blue-600 text-white py-4 rounded-xl text-lg font-semibold hover:bg-blue-700 active:bg-blue-800 transition-colors disabled:bg-gray-400">
+            {pwChecking ? '驗證中...' : '進入系統'}
           </button>
         </div>
       </div>
@@ -935,7 +944,7 @@ const DialysisPatientSystem = () => {
                 </button>
               </div>
             </div>
-            <button onClick={()=>{ storage.clearSession(); setAppUnlocked(false); setIsLoggedIn(false); setAuthToken(''); setCurrentUser(null); setCurrentView('login'); setIsOfflineMode(false); }} className="w-full mt-4 text-gray-600 hover:text-gray-800 py-2">登出</button>
+            <button onClick={()=>{ storage.clearSession(); setAppUnlocked(false); setIsInitialized(false); setIsLoggedIn(false); setAuthToken(''); setCurrentUser(null); setCurrentView('login'); setIsOfflineMode(false); }} className="w-full mt-4 text-gray-600 hover:text-gray-800 py-2">登出</button>
           </div>
         </div>
       </div>
