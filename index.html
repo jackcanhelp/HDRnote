@@ -27,7 +27,22 @@ const {
 
 const { useState, useEffect, useRef } = React;
 
+// 密碼設定（來自 .env APP_PASSWORD，靜態網站只能寫在這裡）
+const APP_PASSWORD = 'JJ20200304';
+
+// localStorage 工具
+const storage = {
+  getPatients: () => { try { return JSON.parse(localStorage.getItem('hdr_patients')) || null; } catch { return null; } },
+  savePatients: (data) => { try { localStorage.setItem('hdr_patients', JSON.stringify(data)); } catch {} },
+  getSession: () => { try { return JSON.parse(sessionStorage.getItem('hdr_session')); } catch { return null; } },
+  saveSession: (data) => { try { sessionStorage.setItem('hdr_session', JSON.stringify(data)); } catch {} },
+  clearSession: () => { try { sessionStorage.removeItem('hdr_session'); } catch {} },
+};
+
 const DialysisPatientSystem = () => {
+  const [appUnlocked, setAppUnlocked] = useState(() => !!storage.getSession());
+  const [pwInput, setPwInput] = useState('');
+  const [pwError, setPwError] = useState(false);
   const [currentView, setCurrentView] = useState('login');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [authToken, setAuthToken] = useState('');
@@ -274,9 +289,16 @@ const DialysisPatientSystem = () => {
   };
 
   useEffect(() => {
-    setPatients(TEST_PATIENTS);
+    // 優先從 localStorage 讀取，若無則用測試資料
+    const saved = storage.getPatients();
+    setPatients(saved || TEST_PATIENTS);
     return () => { if (cameraStream) cameraStream.getTracks().forEach(t => t.stop()); };
   }, [cameraStream]);
+
+  // patients 有變動時自動存到 localStorage
+  useEffect(() => {
+    if (patients.length > 0) storage.savePatients(patients);
+  }, [patients]);
 
   const apiRequest = async (endpoint, options = {}) => {
     try {
@@ -721,6 +743,48 @@ const DialysisPatientSystem = () => {
     </div>
   );
 
+  // ===== PASSWORD GATE =====
+  if (!appUnlocked) {
+    const handleUnlock = () => {
+      if (pwInput === APP_PASSWORD) {
+        storage.saveSession({ unlocked: true });
+        setAppUnlocked(true);
+        setPwError(false);
+      } else {
+        setPwError(true);
+        setPwInput('');
+      }
+    };
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm">
+          <div className="text-center mb-8">
+            <div className="bg-blue-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-4xl">🏥</span>
+            </div>
+            <h1 className="text-2xl font-bold text-gray-800">洗腎室系統</h1>
+            <p className="text-gray-500 text-sm mt-1">請輸入存取密碼</p>
+          </div>
+          <div className="mb-4">
+            <input
+              type="password"
+              value={pwInput}
+              onChange={e=>{ setPwInput(e.target.value); setPwError(false); }}
+              onKeyPress={e=>e.key==='Enter'&&handleUnlock()}
+              className={`w-full p-4 text-center text-xl tracking-widest border-2 rounded-xl focus:outline-none ${pwError?'border-red-400 bg-red-50':'border-gray-200 focus:border-blue-400'}`}
+              placeholder="••••••••••"
+              autoFocus
+            />
+            {pwError && <p className="text-red-500 text-sm text-center mt-2">密碼錯誤，請再試一次</p>}
+          </div>
+          <button onClick={handleUnlock} className="w-full bg-blue-600 text-white py-4 rounded-xl text-lg font-semibold hover:bg-blue-700 active:bg-blue-800 transition-colors">
+            進入系統
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // ===== LOGIN VIEW =====
   if (!isLoggedIn) {
     return (
@@ -842,7 +906,7 @@ const DialysisPatientSystem = () => {
                 </button>
               </div>
             </div>
-            <button onClick={()=>{ setIsLoggedIn(false); setAuthToken(''); setCurrentUser(null); setCurrentView('login'); setIsOfflineMode(false); }} className="w-full mt-4 text-gray-600 hover:text-gray-800 py-2">登出</button>
+            <button onClick={()=>{ storage.clearSession(); setAppUnlocked(false); setIsLoggedIn(false); setAuthToken(''); setCurrentUser(null); setCurrentView('login'); setIsOfflineMode(false); }} className="w-full mt-4 text-gray-600 hover:text-gray-800 py-2">登出</button>
           </div>
         </div>
       </div>

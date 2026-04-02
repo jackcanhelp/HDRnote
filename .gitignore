@@ -1,3 +1,6 @@
+# 環境變數（含密碼，不上傳）
+.env
+
 # OS
 .DS_Store
 Thumbs.db
