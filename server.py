@@ -11,9 +11,19 @@ import socket
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
-PASSWORD     = os.getenv('HDR_PASSWORD', '')
-PATIENTS_FILE = Path('patients.json')
-PORT         = 8080
+def load_password():
+    """直接解析 secrets.bat，不依賴環境變數傳遞"""
+    import re
+    secrets = Path(__file__).parent / 'secrets.bat'
+    if secrets.exists():
+        m = re.search(r'set\s+HDR_PASSWORD\s*=\s*(\S+)', secrets.read_text(), re.IGNORECASE)
+        if m:
+            return m.group(1)
+    return os.getenv('HDR_PASSWORD', '')
+
+PASSWORD      = load_password()
+PATIENTS_FILE = Path(__file__).parent / 'patients.json'
+PORT          = 8080
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -21,7 +31,7 @@ class Handler(SimpleHTTPRequestHandler):
     # ── 驗證密碼 ─────────────────────────────────────────────
     def check_auth(self):
         if not PASSWORD:
-            print('[HDRnote] ⚠️  HDR_PASSWORD 未設定，請透過 start.bat 啟動')
+            print('[HDRnote] *** 密碼未設定，請確認 secrets.bat 存在 ***')
             return False
         return self.headers.get('X-Password', '') == PASSWORD
 
@@ -95,7 +105,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 if __name__ == '__main__':
     if not PASSWORD:
-        print('⚠️  警告: HDR_PASSWORD 未設定，請透過 start.bat 啟動')
+        print('*** 警告: secrets.bat 不存在或格式有誤，密碼未載入 ***')
 
     try:
         local_ip = socket.gethostbyname(socket.gethostname())
@@ -104,13 +114,13 @@ if __name__ == '__main__':
 
     server = HTTPServer(('0.0.0.0', PORT), Handler)
     print(f'\n{"="*50}')
-    print(f'  🏥  HDRnote 伺服器已啟動')
+    print(f'  [HDRnote] 伺服器已啟動')
     print(f'{"="*50}')
-    print(f'  💻  本機:   http://localhost:{PORT}')
-    print(f'  📱  區網:   http://{local_ip}:{PORT}')
-    print(f'  📂  資料:   {PATIENTS_FILE.resolve()}')
-    print(f'  🔑  密碼:   {"已設定" if PASSWORD else "❌ 未設定"}')
-    print(f'  ⏹️   停止:   Ctrl+C')
+    print(f'  本機:   http://localhost:{PORT}')
+    print(f'  區網:   http://{local_ip}:{PORT}')
+    print(f'  資料:   {PATIENTS_FILE.resolve()}')
+    print(f'  密碼:   {"已設定 OK" if PASSWORD else "*** 未設定 ***"}')
+    print(f'  停止:   Ctrl+C')
     print(f'{"="*50}\n')
 
     try:
