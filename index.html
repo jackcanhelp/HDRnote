@@ -318,10 +318,6 @@ const DialysisPatientSystem = () => {
   };
 
   useEffect(() => {
-    storage.getPatients().then(saved => {
-      setPatients(saved || TEST_PATIENTS);
-      setIsInitialized(true);
-    });
     return () => { if (cameraStream) cameraStream.getTracks().forEach(t => t.stop()); };
   }, [cameraStream]);
 
@@ -785,7 +781,15 @@ const DialysisPatientSystem = () => {
         setPwError('offline');
       } else if (ok) {
         storage.setSession(pwInput);
+        setCurrentUser({ username: 'user', name: '使用者', role: 'nurse' });
+        setIsLoggedIn(true);
+        setCurrentView('scanner');
         setAppUnlocked(true);
+        // 密碼驗過後才載入病人資料
+        storage.getPatients().then(saved => {
+          setPatients(saved || TEST_PATIENTS);
+          setIsInitialized(true);
+        });
       } else {
         setPwError('wrong');
         setPwInput('');
@@ -818,49 +822,6 @@ const DialysisPatientSystem = () => {
           <button onClick={handleUnlock} disabled={pwChecking} className="w-full bg-blue-600 text-white py-4 rounded-xl text-lg font-semibold hover:bg-blue-700 active:bg-blue-800 transition-colors disabled:bg-gray-400">
             {pwChecking ? '驗證中...' : '進入系統'}
           </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ===== LOGIN VIEW =====
-  if (!isLoggedIn) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-        <div className="bg-white rounded-lg shadow-lg p-8 w-full max-w-md">
-          <div className="text-center mb-6">
-            <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-              <User className="text-blue-600" size={32} />
-            </div>
-            <h1 className="text-2xl font-bold text-gray-800">洗腎室病患系統</h1>
-            <p className="text-gray-600">請輸入帳號密碼登入</p>
-          </div>
-          <ErrorAlert />
-          <div>
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">帳號</label>
-              <input type="text" id="username" className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500" placeholder="請輸入帳號" disabled={loading} />
-            </div>
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">密碼</label>
-              <input type="password" id="password" className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500" placeholder="請輸入密碼" disabled={loading}
-                onKeyPress={e=>{ if(e.key==='Enter') handleLogin(document.getElementById('username').value,document.getElementById('password').value); }} />
-            </div>
-            <button onClick={()=>handleLogin(document.getElementById('username').value,document.getElementById('password').value)} disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 disabled:bg-gray-400">
-              {loading?'登入中...':'登入'}
-            </button>
-            <div className="mt-6 bg-gray-50 p-4 rounded-lg">
-              <p className="text-sm font-medium text-gray-700 mb-2">🧪 測試帳號：</p>
-              <div className="space-y-1 text-sm text-gray-600">
-                <p><strong>管理員：</strong> admin / admin123</p>
-                <p><strong>護理師：</strong> nurse1 / nurse123</p>
-                <p><strong>醫師：</strong> doctor1 / doctor123</p>
-              </div>
-              <div className="mt-3 p-2 bg-blue-50 rounded border-l-4 border-blue-400">
-                <p className="text-xs text-blue-700">💡 無後端時自動切換至離線測試模式</p>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     );
@@ -944,7 +905,7 @@ const DialysisPatientSystem = () => {
                 </button>
               </div>
             </div>
-            <button onClick={()=>{ storage.clearSession(); setAppUnlocked(false); setIsInitialized(false); setIsLoggedIn(false); setAuthToken(''); setCurrentUser(null); setCurrentView('login'); setIsOfflineMode(false); }} className="w-full mt-4 text-gray-600 hover:text-gray-800 py-2">登出</button>
+            <button onClick={()=>{ storage.clearSession(); setAppUnlocked(false); setIsLoggedIn(false); setCurrentUser(null); setPatients([]); setIsInitialized(false); setCurrentView('scanner'); }} className="w-full mt-4 text-gray-600 hover:text-gray-800 py-2">鎖定（登出）</button>
           </div>
         </div>
       </div>
