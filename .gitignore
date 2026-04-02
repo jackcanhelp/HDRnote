@@ -1,6 +1,9 @@
 # 環境變數（含密碼，不上傳）
 .env
 
+# 病人資料（個資，不上傳）
+patients.json
+
 # OS
 .DS_Store
 Thumbs.db

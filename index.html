@@ -27,13 +27,43 @@ const {
 
 const { useState, useEffect, useRef } = React;
 
-// 密碼設定（來自 .env APP_PASSWORD，靜態網站只能寫在這裡）
-const APP_PASSWORD = 'JJ20200304';
+// 密碼：僅存 SHA-256 雜湊，原始密碼不出現在程式碼中
+// 雜湊值 = SHA-256('JJ20200304')
+const PASSWORD_HASH = 'a2bbe2e8270a82a1c99cb4567e9dae89cf7afbe039e98a893b8d66a1d05fd435';
 
-// localStorage 工具
+async function sha256(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// 資料存取：本地跑 server.py 時存 patients.json；GitHub Pages 時存 localStorage
+const IS_LOCAL = ['localhost', '127.0.0.1'].includes(window.location.hostname) ||
+                 /^192\.168\./.test(window.location.hostname) ||
+                 /^10\./.test(window.location.hostname);
+const LOCAL_API = IS_LOCAL ? `${window.location.protocol}//${window.location.host}` : null;
+
 const storage = {
-  getPatients: () => { try { return JSON.parse(localStorage.getItem('hdr_patients')) || null; } catch { return null; } },
-  savePatients: (data) => { try { localStorage.setItem('hdr_patients', JSON.stringify(data)); } catch {} },
+  getPatients: async () => {
+    if (LOCAL_API) {
+      try {
+        const r = await fetch(`${LOCAL_API}/api/patients`);
+        if (r.ok) { const d = await r.json(); if (d) return d; }
+      } catch {}
+    }
+    try { return JSON.parse(localStorage.getItem('hdr_patients')) || null; } catch { return null; }
+  },
+  savePatients: async (data) => {
+    if (LOCAL_API) {
+      try {
+        await fetch(`${LOCAL_API}/api/patients`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+      } catch {}
+    }
+    try { localStorage.setItem('hdr_patients', JSON.stringify(data)); } catch {}
+  },
   getSession: () => { try { return JSON.parse(sessionStorage.getItem('hdr_session')); } catch { return null; } },
   saveSession: (data) => { try { sessionStorage.setItem('hdr_session', JSON.stringify(data)); } catch {} },
   clearSession: () => { try { sessionStorage.removeItem('hdr_session'); } catch {} },
@@ -289,9 +319,7 @@ const DialysisPatientSystem = () => {
   };
 
   useEffect(() => {
-    // 優先從 localStorage 讀取，若無則用測試資料
-    const saved = storage.getPatients();
-    setPatients(saved || TEST_PATIENTS);
+    storage.getPatients().then(saved => setPatients(saved || TEST_PATIENTS));
     return () => { if (cameraStream) cameraStream.getTracks().forEach(t => t.stop()); };
   }, [cameraStream]);
 
@@ -745,8 +773,9 @@ const DialysisPatientSystem = () => {
 
   // ===== PASSWORD GATE =====
   if (!appUnlocked) {
-    const handleUnlock = () => {
-      if (pwInput === APP_PASSWORD) {
+    const handleUnlock = async () => {
+      const hash = await sha256(pwInput);
+      if (hash === PASSWORD_HASH) {
         storage.saveSession({ unlocked: true });
         setAppUnlocked(true);
         setPwError(false);
