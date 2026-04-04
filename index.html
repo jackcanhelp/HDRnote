@@ -105,6 +105,8 @@ const DialysisPatientSystem = () => {
   const [notesContent, setNotesContent] = useState('');
   const [todoInput, setTodoInput] = useState('');
   const [todoDate, setTodoDate] = useState('');
+  const [labData, setLabData] = useState({});
+  const [selectedPatientForLab, setSelectedPatientForLab] = useState(null);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -329,6 +331,10 @@ const DialysisPatientSystem = () => {
         setPatients(saved || TEST_PATIENTS);
         setIsInitialized(true);
       });
+      fetch('/api/labs', { headers: { 'X-Password': SESSION_PW } })
+        .then(r => r.ok ? r.json() : {})
+        .then(d => setLabData(d || {}))
+        .catch(() => {});
     }
   }, []);
 
@@ -568,6 +574,8 @@ const DialysisPatientSystem = () => {
   const editMedicationFromBackground = () => { if (currentPatient) { setSelectedPatientForMeds(currentPatient); setCurrentView('medications'); } };
 
   const handleDialysisRecords = (patient) => { setSelectedPatientForDialysis(patient); setCurrentView('dialysisRecords'); };
+  const handleLabReport = (patient) => { setSelectedPatientForLab(patient); setCurrentView('labReport'); };
+
   const handleReminders = (patient) => {
     setSelectedPatientForReminders(patient);
     setNotesContent(patient.reminders||'');
@@ -824,6 +832,10 @@ const DialysisPatientSystem = () => {
           setPatients(saved || TEST_PATIENTS);
           setIsInitialized(true);
         });
+        fetch('/api/labs', { headers: { 'X-Password': pwInput } })
+          .then(r => r.ok ? r.json() : {})
+          .then(d => setLabData(d || {}))
+          .catch(() => {});
       } else {
         setPwError('wrong');
         setPwInput('');
@@ -1533,6 +1545,7 @@ const DialysisPatientSystem = () => {
                         <button onClick={()=>handleDialysisRecords(patient)} className="p-2 text-green-600 hover:bg-green-50 rounded border border-green-200" title="透析紀錄"><Activity size={14} /></button>
                       </div>
                       <div className="flex space-x-1">
+                        <button onClick={()=>handleLabReport(patient)} className="p-2 text-teal-600 hover:bg-teal-50 rounded border border-teal-200" title="抽血報告"><TrendingUp size={14} /></button>
                         <button onClick={()=>handleReminders(patient)} className="p-2 text-orange-600 hover:bg-orange-50 rounded border border-orange-200" title="提醒事項"><Bell size={14} /></button>
                         <button onClick={()=>{setCurrentPatient(patient);setIsNewPatient(false);setCurrentView('background');}} className="p-2 text-blue-600 hover:bg-blue-50 rounded border border-blue-200" title="背景資料"><FileText size={14} /></button>
                       </div>
@@ -1558,6 +1571,111 @@ const DialysisPatientSystem = () => {
               <Camera className="mr-2" size={20} />掃描QR Code
             </button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ===== LAB REPORT VIEW =====
+  if (currentView==='labReport'&&selectedPatientForLab) {
+    const records = labData[selectedPatientForLab.name] || [];
+    const LAB_REFS = {
+      'URR':           { min:65,  label:'≥65%' },
+      'Kt/V (Gotch)':  { min:1.2, label:'≥1.2' },
+      'K 鉀':          { min:3.5, max:5.5, label:'3.5-5.5' },
+      'P 磷':          { min:3.5, max:5.5, label:'3.5-5.5' },
+      'Ca 鈣':         { min:8.4, max:10.2, label:'8.4-10.2' },
+      'Albumin':       { min:3.5, label:'≥3.5' },
+      'Hb':            { min:10,  max:12,   label:'10-12' },
+      'Hct':           { min:33,  max:36,   label:'33-36%' },
+      'K 鉀':          { min:3.5, max:5.5,  label:'3.5-5.5' },
+    };
+    const checkRef = (item, val) => {
+      const ref = LAB_REFS[item];
+      if (!ref || !val || val==='-') return 'normal';
+      const n = parseFloat(val);
+      if (isNaN(n)) return 'normal';
+      if (ref.min !== undefined && n < ref.min) return 'low';
+      if (ref.max !== undefined && n > ref.max) return 'high';
+      return 'normal';
+    };
+    const allItems = records.length > 0
+      ? Object.keys(records[0]).filter(k => k !== 'period' && k !== 'date')
+      : [];
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-white shadow-sm border-b p-4">
+          <div className="flex items-center justify-between">
+            <button onClick={()=>setCurrentView('patientList')} className="text-blue-600 hover:bg-blue-50 p-2 rounded"><X size={20} /></button>
+            <div className="text-center">
+              <h1 className="text-lg font-semibold">抽血報告</h1>
+              <p className="text-sm text-gray-500">{selectedPatientForLab.name}</p>
+            </div>
+            <div className="w-10" />
+          </div>
+        </div>
+        <div className="p-4 max-w-2xl mx-auto">
+          {records.length === 0 ? (
+            <div className="bg-white rounded-lg shadow-sm p-8 text-center">
+              <TrendingUp className="text-gray-300 mx-auto mb-4" size={48} />
+              <p className="text-gray-500">此病人目前無抽血資料</p>
+              <p className="text-xs text-gray-400 mt-2">請確認姓名是否與 Excel 中一致</p>
+            </div>
+          ) : (
+            <>
+              {/* 期別選擇 */}
+              <div className="flex space-x-2 overflow-x-auto mb-4 pb-1">
+                {records.map((rec, i) => (
+                  <span key={i} className="bg-teal-100 text-teal-800 text-xs px-3 py-1 rounded-full whitespace-nowrap font-medium">
+                    {rec.period} {rec.date}
+                  </span>
+                ))}
+              </div>
+              {/* 資料表 */}
+              <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b">
+                      <tr>
+                        <th className="text-left py-2 px-3 font-medium text-gray-600 w-36">項目</th>
+                        {records.map((rec, i) => (
+                          <th key={i} className="text-center py-2 px-2 font-medium text-gray-600 min-w-20">
+                            <div>{rec.period}</div>
+                            <div className="text-xs text-gray-400">{rec.date}</div>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {allItems.map((item, idx) => (
+                        <tr key={item} className={idx%2===0?'bg-white':'bg-gray-50'}>
+                          <td className="py-2 px-3 text-gray-700 font-medium text-xs">{item}</td>
+                          {records.map((rec, ri) => {
+                            const val = rec[item] || '-';
+                            const status = checkRef(item, val);
+                            return (
+                              <td key={ri} className={`text-center py-2 px-2 font-medium text-sm ${status==='low'?'text-blue-600 bg-blue-50':status==='high'?'text-red-600 bg-red-50':'text-gray-800'}`}>
+                                {val}
+                                {LAB_REFS[item] && val !== '-' && status !== 'normal' &&
+                                  <span className="text-xs ml-0.5">{status==='low'?'↓':'↑'}</span>}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="p-3 border-t bg-gray-50 text-xs text-gray-500 flex space-x-4">
+                  <span><span className="text-blue-600 font-medium">↓ 藍色</span> = 偏低</span>
+                  <span><span className="text-red-600 font-medium">↑ 紅色</span> = 偏高</span>
+                  {Object.entries(LAB_REFS).slice(0,3).map(([k,v])=>(
+                    <span key={k}>{k}: {v.label}</span>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     );
