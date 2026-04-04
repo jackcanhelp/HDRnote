@@ -345,52 +345,9 @@ const DialysisPatientSystem = () => {
     if (isInitialized && patients.length > 0) storage.savePatients(patients);
   }, [patients, isInitialized]);
 
-  const apiRequest = async (endpoint, options = {}) => {
-    try {
-      setError('');
-      const config = { headers: { 'Content-Type': 'application/json', ...(authToken && { Authorization: `Bearer ${authToken}` }) }, ...options };
-      const response = await fetch(`${API_BASE}${endpoint}`, config);
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || '請求失敗');
-      return data;
-    } catch (error) {
-      if (error.name === 'TypeError' && error.message.includes('fetch')) {
-        setIsOfflineMode(true);
-        throw new Error('切換至離線模式');
-      } else { setError(error.message); }
-      throw error;
-    }
-  };
-
-  const handleLogin = async (username, password) => {
-    try {
-      setLoading(true); setError('');
-      try {
-        const data = await apiRequest('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) });
-        if (data.success) {
-          setAuthToken(data.data.token); setCurrentUser(data.data.user);
-          setIsLoggedIn(true); setCurrentView('scanner'); setIsOfflineMode(false);
-          await loadPatients(); return;
-        }
-      } catch (apiError) { setIsOfflineMode(true); }
-      const testUser = TEST_USERS[username];
-      if (testUser && testUser.password === password) {
-        setAuthToken(`mock-token-${Date.now()}`);
-        setCurrentUser({ username: testUser.username, name: testUser.name, role: testUser.role });
-        setIsLoggedIn(true); setCurrentView('scanner'); setIsOfflineMode(true); return;
-      }
-      throw new Error('帳號或密碼錯誤');
-    } catch (error) { setError(error.message); } finally { setLoading(false); }
-  };
-
   const loadPatients = async () => {
-    try {
-      if (!isOfflineMode) {
-        const data = await apiRequest('/patients');
-        if (data.success) { setPatients(data.data.patients || []); return; }
-      }
-    } catch { setIsOfflineMode(true); }
-    setPatients(TEST_PATIENTS);
+    const saved = await storage.getPatients();
+    setPatients(saved || TEST_PATIENTS);
   };
 
   const startCamera = async () => {
@@ -433,12 +390,6 @@ const DialysisPatientSystem = () => {
   const handleQRScan = async (patientId) => {
     try {
       setLoading(true);
-      if (!isOfflineMode) {
-        try {
-          const data = await apiRequest(`/patients/qr/${patientId}`);
-          if (data.success) { setCurrentPatient(data.data.patient); setIsNewPatient(false); setCurrentView('patient'); await loadPatientHistory(patientId); return; }
-        } catch { setIsOfflineMode(true); }
-      }
       const foundPatient = patients.find(p => p.patientId === patientId);
       if (foundPatient) {
         setCurrentPatient(foundPatient); setIsNewPatient(false); setCurrentView('patient'); await loadPatientHistory(patientId);
@@ -453,30 +404,19 @@ const DialysisPatientSystem = () => {
   };
 
   const loadPatientHistory = async (patientId) => {
-    try {
-      if (!isOfflineMode) {
-        const data = await apiRequest(`/history/${patientId}`);
-        if (data.success) { setHistory(data.data.history.map(r => ({ date: new Date(r.createdAt).toISOString().split('T')[0], time: new Date(r.createdAt).toTimeString().split(' ')[0].substring(0,5), operator: r.operator.name, changeType: r.changeType, changes: r.changes, notes: r.notes }))); return; }
-      }
-    } catch { setIsOfflineMode(true); }
-    setHistory([{ date:'2025-05-30', time:'14:30', operator: currentUser?.name||'系統', changeType:'更新', changes:{ dw:{old:'66.0',new:'65.5'} }, notes:'透析後體重調整' }, { date:'2025-05-28', time:'09:15', operator: currentUser?.name||'系統', changeType:'更新', changes:{ bloodFlow:{old:'260',new:'280'} }, notes:'增加血流量' }]);
+    setHistory([]);
   };
 
   const handleCreatePatient = async () => {
     if (!currentPatient) return;
     try {
       setLoading(true);
-      const required = ['patientId','name','gender','birthday','idNumber'];
+      const required = ['patientId','name'];
       for (const f of required) { if (!currentPatient[f]) throw new Error(`請填寫 ${fieldNames[f]||f}`); }
-      if (!isOfflineMode) {
-        try {
-          const data = await apiRequest('/patients', { method:'POST', body:JSON.stringify(currentPatient) });
-          if (data.success) { setPatients(prev=>[...prev,data.data.patient]); setIsNewPatient(false); alert(`✅ 新病人建立成功！\n病歷號: ${currentPatient.patientId}\n姓名: ${currentPatient.name}`); await loadPatientHistory(currentPatient.patientId); return; }
-        } catch { setIsOfflineMode(true); }
-      }
       const newP = { ...currentPatient, isActive:true, createdAt:new Date(), updatedAt:new Date() };
-      setPatients(prev=>[...prev,newP]); setIsNewPatient(false);
-      alert(`病人資料建立成功！\n病歷號: ${currentPatient.patientId}\n姓名: ${currentPatient.name}${isOfflineMode?'\n(離線模式)':''}`);
+      setPatients(prev=>[...prev, newP]);
+      setIsNewPatient(false);
+      alert(`✅ 新病人建立成功！\n病歷號: ${currentPatient.patientId}\n姓名: ${currentPatient.name}`);
     } catch (error) { setError(error.message); } finally { setLoading(false); }
   };
 
@@ -484,15 +424,8 @@ const DialysisPatientSystem = () => {
     if (!currentPatient) return;
     try {
       setLoading(true);
-      if (!isOfflineMode) {
-        try {
-          const data = await apiRequest(`/patients/${currentPatient.patientId}`, { method:'PUT', body:JSON.stringify(currentPatient) });
-          if (data.success) { setPatients(patients.map(p=>p.patientId===currentPatient.patientId?data.data.patient:p)); await loadPatientHistory(currentPatient.patientId); alert(`✅ 資料已儲存成功！\n操作者: ${currentUser?.name||'系統'}`); return; }
-        } catch { setIsOfflineMode(true); }
-      }
-      setPatients(patients.map(p=>p.patientId===currentPatient.patientId?currentPatient:p));
-      setHistory(prev=>[{ date:new Date().toISOString().split('T')[0], time:new Date().toTimeString().split(' ')[0].substring(0,5), operator:currentUser?.name||'系統', changeType:'更新', changes:{lastUpdate:{old:'上次更新',new:'剛剛更新'}}, notes:'本地儲存更新' },...prev]);
-      alert(`資料儲存成功！\n操作者: ${currentUser?.name||'系統'}${isOfflineMode?'\n(離線模式)':''}`);
+      setPatients(patients.map(p => p.patientId===currentPatient.patientId ? currentPatient : p));
+      alert(`✅ 資料已儲存！`);
     } catch (error) { setError(error.message); } finally { setLoading(false); }
   };
 
@@ -819,9 +752,8 @@ const DialysisPatientSystem = () => {
   );
 
   const ConnectionStatus = () => (
-    <div className={`flex items-center text-xs px-2 py-1 rounded-full ${isOfflineMode?'bg-orange-100 text-orange-700':'bg-green-100 text-green-700'}`}>
-      {isOfflineMode ? <WifiOff size={12} className="mr-1" /> : <Wifi size={12} className="mr-1" />}
-      {isOfflineMode?'離線模式':'線上模式'}
+    <div className="flex items-center text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">
+      <Wifi size={12} className="mr-1" />線上模式
     </div>
   );
 
