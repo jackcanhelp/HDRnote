@@ -1438,23 +1438,26 @@ const DialysisPatientSystem = () => {
 
           {filteredPatients.length>0 ? (
             <div className="space-y-2">
-              {filteredPatients.map(patient=>(
+              {filteredPatients.map(patient=>{
+                const shiftColor = patient.shift==='早' ? 'bg-yellow-100 text-yellow-800' : patient.shift==='中' ? 'bg-green-100 text-green-800' : patient.shift==='晚' ? 'bg-indigo-100 text-indigo-800' : 'bg-gray-100 text-gray-600';
+                const qwLabel = patient.qw==='QW135' ? '週一三五' : patient.qw==='QW246' ? '週二四六' : '';
+                return (
                 <div key={patient.patientId} className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-blue-500">
                   <div className="flex items-center justify-between">
                     <div className="flex-1 cursor-pointer hover:bg-blue-50 p-2 rounded transition-colors" onClick={()=>handleSelectPatient(patient)}>
-                      <div className="flex items-center space-x-3 flex-wrap gap-y-1">
+                      <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                         <h3 className="font-semibold text-gray-800">{patient.name}</h3>
-                        <span className="text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded">{patient.patientId}</span>
-                        <span className={`text-xs px-2 py-1 rounded ${patient.isActive!==false?'bg-green-100 text-green-800':'bg-gray-100 text-gray-600'}`}>{patient.isActive!==false?'使用中':'已暫停'}</span>
+                        {patient.bed&&<span className="text-sm font-bold bg-gray-200 text-gray-700 px-2 py-0.5 rounded">{patient.bed}</span>}
+                        {patient.shift&&<span className={`text-xs px-2 py-0.5 rounded font-medium ${shiftColor}`}>{qwLabel} {patient.shift}班</span>}
+                        <span className={`text-xs px-2 py-0.5 rounded ${patient.isActive!==false?'bg-green-100 text-green-800':'bg-gray-100 text-gray-600'}`}>{patient.isActive!==false?'使用中':'已暫停'}</span>
                       </div>
-                      <div className="mt-2 space-y-1 text-sm text-gray-600">
-                        <div className="flex items-center space-x-4"><span>性別: {patient.gender}</span><span>血型: {patient.bloodType||'N/A'}</span><span>頻率: 週{patient.frequency||3}次</span></div>
-                        <div className="flex items-center space-x-4"><span>血管通路: {patient.accessSide}{patient.accessLocation} {patient.accessType}</span><span>乾體重: {patient.dw||0}kg</span></div>
+                      <div className="mt-1 space-y-0.5 text-sm text-gray-600">
+                        {(patient.accessType||patient.dw)&&<div className="flex items-center space-x-3"><span>通路: {patient.accessSide}{patient.accessLocation} {patient.accessType}</span><span>乾重: {patient.dw||0}kg</span></div>}
                         {patient.drugAllergies&&patient.drugAllergies!=='無已知過敏'&&<div className="flex items-center text-red-600 font-medium"><AlertCircle size={14} className="mr-1" />過敏: {patient.drugAllergies}</div>}
-                        <div className="flex items-center space-x-4 text-xs">
-                          {patient.medications&&patient.medications.length>0&&<span className="flex items-center text-blue-600"><Pill size={12} className="mr-1" />用藥: {patient.medications.length} 種</span>}
-                          {patient.dialysisRecords&&patient.dialysisRecords.length>0&&<span className="flex items-center text-green-600"><Activity size={12} className="mr-1" />透析: {patient.dialysisRecords.length} 次記錄</span>}
-                          {patient.reminders&&patient.reminders.trim()&&<span className="flex items-center text-orange-600"><Bell size={12} className="mr-1" />提醒: 有記事</span>}
+                        <div className="flex items-center space-x-3 text-xs">
+                          {patient.medications&&patient.medications.length>0&&<span className="flex items-center text-blue-600"><Pill size={12} className="mr-1" />{patient.medications.length} 種藥</span>}
+                          {patient.dialysisRecords&&patient.dialysisRecords.length>0&&<span className="flex items-center text-green-600"><Activity size={12} className="mr-1" />{patient.dialysisRecords.length} 次記錄</span>}
+                          {patient.reminders&&patient.reminders.trim()&&<span className="flex items-center text-orange-600"><Bell size={12} className="mr-1" />有記事</span>}
                         </div>
                       </div>
                     </div>
@@ -1465,12 +1468,13 @@ const DialysisPatientSystem = () => {
                       </div>
                       <div className="flex space-x-1">
                         <button onClick={()=>handleReminders(patient)} className="p-2 text-orange-600 hover:bg-orange-50 rounded border border-orange-200" title="提醒事項"><Bell size={14} /></button>
-                        <div className="p-2 text-gray-400 cursor-pointer" onClick={()=>handleSelectPatient(patient)}><Edit3 size={14} /></div>
+                        <button onClick={()=>{setCurrentPatient(patient);setIsNewPatient(false);setCurrentView('background');}} className="p-2 text-blue-600 hover:bg-blue-50 rounded border border-blue-200" title="背景資料"><FileText size={14} /></button>
                       </div>
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="bg-white rounded-lg shadow-sm p-8 text-center">
