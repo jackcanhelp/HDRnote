@@ -16,7 +16,7 @@
   <div id="root"></div>
 
 <script type="text/babel" data-type="module">
-import React, { useState, useEffect, useRef } from 'https://esm.sh/react@18';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'https://esm.sh/react@18';
 import { createRoot } from 'https://esm.sh/react-dom@18/client';
 import {
   Camera, User, History, Download, Save, Edit3, X, Check, AlertCircle, Zap,
@@ -113,6 +113,8 @@ const DialysisPatientSystem = () => {
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const patientListScrollRef = useRef(null);
+  const patientListScrollTop = useRef(0);
 
   const API_BASE = 'http://localhost:5000/api';
 
@@ -346,6 +348,21 @@ const DialysisPatientSystem = () => {
     if (isInitialized && patients.length > 0) storage.savePatients(patients);
   }, [patients, isInitialized]);
 
+  useLayoutEffect(() => {
+    if (currentView === 'patientList' && patientListScrollRef.current) {
+      patientListScrollRef.current.scrollTop = patientListScrollTop.current;
+    }
+  }, [currentView]);
+
+  useEffect(() => {
+    if (currentView === 'patientList' && patientListScrollRef.current) {
+      const el = patientListScrollRef.current;
+      const onScroll = () => { patientListScrollTop.current = el.scrollTop; };
+      el.addEventListener('scroll', onScroll, { passive: true });
+      return () => el.removeEventListener('scroll', onScroll);
+    }
+  }, [currentView]);
+
   const loadPatients = async () => {
     const saved = await storage.getPatients();
     setPatients(saved || TEST_PATIENTS);
@@ -446,7 +463,7 @@ const DialysisPatientSystem = () => {
   const updateField = (field, value) => setCurrentPatient(prev=>({...prev,[field]:value}));
 
   const getFilteredPatients = () => {
-    let filtered = patients;
+    let filtered = patients.filter(p => p.bed !== '示範');
     const shiftFilters = {
       '135早': { qw:'QW135', shift:'早' }, '135中': { qw:'QW135', shift:'中' }, '135晚': { qw:'QW135', shift:'晚' },
       '246早': { qw:'QW246', shift:'早' }, '246中': { qw:'QW246', shift:'中' },
@@ -886,16 +903,15 @@ const DialysisPatientSystem = () => {
                   <Search className="mr-2" size={16} />快速查找
                 </button>
               </div>
-              <p className="text-sm text-gray-600 mb-2">🧪 測試功能：</p>
-              <div className="bg-gray-50 p-4 rounded-lg space-y-2">
-                {[['P001234','林小明','blue'],['P002468','陳小蓮','green'],['P003579','吳大山-已暫停','red'],['P004680','張美枝','indigo']].map(([id,name,color])=>(
-                  <button key={id} onClick={()=>handleQRScan(id)} disabled={loading} className={`w-full bg-${color}-600 text-white py-2 rounded-md hover:bg-${color}-700 disabled:bg-gray-400`}>
-                    📱 測試病人：{name} ({id})
-                  </button>
-                ))}
-                <button onClick={()=>{ setCurrentPatient({ patientId:`P${Date.now().toString().slice(-6)}`, name:'', gender:'男', birthday:'', idNumber:'', frequency:3, duration:4, ak:'', dialysate:'', accessSide:'左', accessLocation:'前臂', accessType:'AVF', heparinDose:0, bloodFlow:0, dw:0, bloodType:'', chronicDiseases:'', drugAllergies:'', firstDialysisHospital:'', firstDialysisDate:'', medications:[], medicationHistory:{}, dialysisRecords:[], reminders:'' }); setIsNewPatient(true); setCurrentView('patient'); setHistory([]); }} disabled={loading} className="w-full bg-purple-600 text-white py-2 rounded-md hover:bg-purple-700 disabled:bg-gray-400">
-                  ➕ 新增病人資料
-                </button>
+              <div className="border border-amber-200 bg-amber-50 rounded-lg p-3">
+                <p className="text-xs font-semibold text-amber-700 mb-2 uppercase tracking-wide">示範病患</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[['P001234','林小明'],['P002468','陳小蓮'],['P003579','吳大山'],['P004680','張美枝']].map(([id,name])=>(
+                    <button key={id} onClick={()=>handleQRScan(id)} disabled={loading} className="bg-white border border-amber-300 text-amber-800 py-2 px-3 rounded-md hover:bg-amber-100 text-sm font-medium disabled:opacity-50">
+                      {name}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
             <button onClick={()=>{ storage.clearSession(); setAppUnlocked(false); setIsLoggedIn(false); setCurrentUser(null); setPatients([]); setIsInitialized(false); setCurrentView('scanner'); }} className="w-full mt-4 text-gray-600 hover:text-gray-800 py-2">鎖定（登出）</button>
@@ -1454,14 +1470,15 @@ const DialysisPatientSystem = () => {
   if (currentView==='patientList') {
     const filteredPatients=getFilteredPatients();
     return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="bg-white shadow-sm border-b p-4">
+      <div className="h-screen flex flex-col bg-gray-50">
+        <div className="bg-white shadow-sm border-b p-4 flex-shrink-0">
           <div className="flex items-center justify-between">
             <button onClick={()=>setCurrentView('scanner')} className="text-blue-600 hover:bg-blue-50 p-2 rounded"><X size={20} /></button>
             <div className="text-center"><h1 className="text-lg font-semibold">病人列表</h1><ConnectionStatus /></div>
             <button onClick={()=>setCurrentView('scanner')} className="text-gray-600 hover:bg-gray-50 p-2 rounded"><Camera size={20} /></button>
           </div>
         </div>
+        <div ref={patientListScrollRef} className="flex-1 overflow-y-auto">
         <div className="p-4 max-w-2xl mx-auto">
           <ErrorAlert />
           <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
@@ -1551,6 +1568,7 @@ const DialysisPatientSystem = () => {
               <Camera className="mr-2" size={20} />掃描QR Code
             </button>
           </div>
+        </div>
         </div>
       </div>
     );
