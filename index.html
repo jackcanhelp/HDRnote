@@ -107,6 +107,7 @@ const DialysisPatientSystem = () => {
   const [todoDate, setTodoDate] = useState('');
   const [labData, setLabData] = useState({});
   const [selectedPatientForLab, setSelectedPatientForLab] = useState(null);
+  const [expandedLabItem, setExpandedLabItem] = useState(null);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -1552,8 +1553,8 @@ const DialysisPatientSystem = () => {
                         <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5">
                           {patient.bed&&<span className="font-bold bg-gray-200 text-gray-700 px-2 py-0.5 rounded text-xs">{patient.bed}</span>}
                           {patient.shift&&<span className={`text-xs px-2 py-0.5 rounded font-medium ${shiftColor}`}>{qwLabel} {patient.shift}班</span>}
-                          {(patient.accessType||patient.dw)&&<><span className="text-xs text-gray-500">通路: {patient.accessSide}{patient.accessLocation} {patient.accessType}</span><span className="text-xs text-gray-500">乾重: {patient.dw||0}kg</span></>}
                         </div>
+                        {(patient.accessType||patient.dw)&&<div className="flex items-center gap-x-3 text-xs text-gray-500 mt-0.5"><span>通路: {patient.accessSide}{patient.accessLocation} {patient.accessType}</span><span>乾重: {patient.dw||0}kg</span></div>}
                         {patient.drugAllergies&&patient.drugAllergies!=='無已知過敏'&&<div className="flex items-center text-red-600 font-medium"><AlertCircle size={14} className="mr-1" />過敏: {patient.drugAllergies}</div>}
                         <div className="flex items-center space-x-3 text-xs">
                           {patient.medications&&patient.medications.length>0&&<span className="flex items-center text-blue-600"><Pill size={12} className="mr-1" />{patient.medications.length} 種藥</span>}
@@ -1632,7 +1633,8 @@ const DialysisPatientSystem = () => {
     const allItems = records.length > 0
       ? Object.keys(records[0]).filter(k=>k!=='period'&&k!=='date')
       : [];
-    const [expandedItem, setExpandedItem] = React.useState(null);
+    const expandedItem = expandedLabItem;
+    const setExpandedItem = setExpandedLabItem;
 
     // SVG 折線圖
     const MiniChart = ({ item }) => {
