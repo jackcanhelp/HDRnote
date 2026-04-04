@@ -8,9 +8,10 @@ echo.
 REM 載入密碼
 call secrets.bat
 
-REM 啟動 server（背景執行）
+REM 啟動 server（掛掉自動重啟的迴圈）
 echo [1/2] 啟動本地伺服器...
-start "HDRnote Server" python server.py
+start "HDRnote Server" cmd /c ":loop & python server.py & echo [HDRnote] Server 重啟中... & timeout /t 3 /nobreak >nul & goto loop"
+
 timeout /t 2 /nobreak >nul
 
 REM 啟動 Cloudflare Tunnel

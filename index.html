@@ -4,11 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>洗腎室患者系統</title>
-  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
   <style>
     * { -webkit-tap-highlight-color: transparent; }
     body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
@@ -18,14 +15,14 @@
 <body>
   <div id="root"></div>
 
-<script type="text/babel">
-const {
+<script type="text/babel" data-type="module">
+import React, { useState, useEffect, useRef } from 'https://esm.sh/react@18';
+import { createRoot } from 'https://esm.sh/react-dom@18/client';
+import {
   Camera, User, History, Download, Save, Edit3, X, Check, AlertCircle, Zap,
   Wifi, WifiOff, FileText, List, Search, Users, Pill, Plus, Trash2, Calendar,
   ChevronLeft, ChevronRight, Activity, Bell, Clock, TrendingUp, Table
-} = lucide;
-
-const { useState, useEffect, useRef } = React;
+} from 'https://esm.sh/lucide-react@0.344.0';
 
 // 密碼存在 server 端 secrets.bat，前端只負責傳送，不做任何本地比對
 // session 期間把密碼存在 sessionStorage（分頁關閉自動清除）
@@ -71,7 +68,7 @@ const DialysisPatientSystem = () => {
   const [pwInput, setPwInput] = useState('');
   const [pwError, setPwError] = useState(''); // '' | 'wrong' | 'offline'
   const [pwChecking, setPwChecking] = useState(false);
-  const [currentView, setCurrentView] = useState('login');
+  const [currentView, setCurrentView] = useState(!!SESSION_PW ? 'scanner' : 'login');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [authToken, setAuthToken] = useState('');
   const [currentUser, setCurrentUser] = useState(null);
@@ -320,6 +317,18 @@ const DialysisPatientSystem = () => {
   useEffect(() => {
     return () => { if (cameraStream) cameraStream.getTracks().forEach(t => t.stop()); };
   }, [cameraStream]);
+
+  // 頁面重新載入時，若 sessionStorage 已有密碼，直接載入病人資料
+  useEffect(() => {
+    if (appUnlocked && !isInitialized) {
+      setCurrentUser({ username: 'user', name: '使用者', role: 'nurse' });
+      setIsLoggedIn(true);
+      storage.getPatients().then(saved => {
+        setPatients(saved || TEST_PATIENTS);
+        setIsInitialized(true);
+      });
+    }
+  }, []);
 
   // patients 變動時自動上傳至 server（初始載入不觸發）
   useEffect(() => {
@@ -1657,8 +1666,7 @@ const DialysisPatientSystem = () => {
   return null;
 };
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<DialysisPatientSystem />);
+createRoot(document.getElementById('root')).render(<DialysisPatientSystem />);
 </script>
 </body>
 </html>
