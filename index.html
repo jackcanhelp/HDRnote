@@ -103,6 +103,8 @@ const DialysisPatientSystem = () => {
   const [viewingHistoryDate, setViewingHistoryDate] = useState('');
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesContent, setNotesContent] = useState('');
+  const [todoInput, setTodoInput] = useState('');
+  const [todoDate, setTodoDate] = useState('');
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -566,7 +568,30 @@ const DialysisPatientSystem = () => {
   const editMedicationFromBackground = () => { if (currentPatient) { setSelectedPatientForMeds(currentPatient); setCurrentView('medications'); } };
 
   const handleDialysisRecords = (patient) => { setSelectedPatientForDialysis(patient); setCurrentView('dialysisRecords'); };
-  const handleReminders = (patient) => { setSelectedPatientForReminders(patient); setNotesContent(patient.reminders||''); setCurrentView('reminders'); };
+  const handleReminders = (patient) => {
+    setSelectedPatientForReminders(patient);
+    setNotesContent(patient.reminders||'');
+    setTodoInput('');
+    setTodoDate(new Date().toISOString().split('T')[0]);
+    setCurrentView('reminders');
+  };
+  const addTodo = () => {
+    if (!todoInput.trim()||!todoDate) return;
+    const newTodo = { id:`todo_${Date.now()}`, date:todoDate, text:todoInput.trim() };
+    const updated = patients.map(p => p.patientId===selectedPatientForReminders.patientId
+      ? {...p, todos:[...(p.todos||[]), newTodo]}
+      : p);
+    setPatients(updated);
+    setSelectedPatientForReminders(updated.find(p=>p.patientId===selectedPatientForReminders.patientId));
+    setTodoInput('');
+  };
+  const deleteTodo = (todoId) => {
+    const updated = patients.map(p => p.patientId===selectedPatientForReminders.patientId
+      ? {...p, todos:(p.todos||[]).filter(t=>t.id!==todoId)}
+      : p);
+    setPatients(updated);
+    setSelectedPatientForReminders(updated.find(p=>p.patientId===selectedPatientForReminders.patientId));
+  };
 
   const saveReminders = () => {
     if (!selectedPatientForReminders) return;
@@ -1192,31 +1217,69 @@ const DialysisPatientSystem = () => {
             <div className="flex items-center space-x-3"><Bell className="text-orange-600" size={24} /><div><h3 className="font-semibold text-gray-800">{selectedPatientForReminders.name}</h3><p className="text-sm text-gray-600">病歷號: {selectedPatientForReminders.patientId}</p></div></div>
           </div>
           <ErrorAlert />
-          <div className="bg-yellow-50 border-l-4 border-yellow-400 rounded-lg shadow-lg">
-            <div className="bg-yellow-100 px-4 py-3 border-b border-yellow-200 rounded-t-lg">
-              <div className="flex items-center justify-between">
-                <h4 className="font-semibold text-yellow-800 flex items-center">📝 提醒便條</h4>
-                <div className="text-xs text-yellow-700">{editingNotes?'編輯模式':'檢視模式'}</div>
-              </div>
+          {/* 待辦事項區 */}
+          <div className="bg-white rounded-lg shadow-sm mb-4">
+            <div className="bg-orange-50 px-4 py-3 border-b border-orange-100 rounded-t-lg flex items-center justify-between">
+              <h4 className="font-semibold text-orange-800 flex items-center"><Bell size={16} className="mr-2" />待辦事項</h4>
+              <span className="text-xs text-orange-600">{(selectedPatientForReminders.todos||[]).length} 項</span>
             </div>
-            <div className="p-6">
+            <div className="p-4">
+              {/* 快速新增 */}
+              <div className="flex space-x-2 mb-4">
+                <input type="date" value={todoDate} onChange={e=>setTodoDate(e.target.value)}
+                  className="border border-gray-300 rounded px-2 py-1.5 text-sm w-36 focus:ring-2 focus:ring-orange-400 focus:outline-none" />
+                <input type="text" value={todoInput} onChange={e=>setTodoInput(e.target.value)}
+                  onKeyPress={e=>e.key==='Enter'&&addTodo()}
+                  placeholder="輸入待辦事項..." className="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-orange-400 focus:outline-none" />
+                <button onClick={addTodo} className="bg-orange-500 text-white px-3 py-1.5 rounded hover:bg-orange-600 flex items-center text-sm"><Plus size={16} /></button>
+              </div>
+              {/* 待辦列表 */}
+              {(selectedPatientForReminders.todos||[]).length===0 ? (
+                <p className="text-gray-400 text-sm text-center py-4">尚無待辦事項</p>
+              ) : (
+                <div className="space-y-2">
+                  {[...(selectedPatientForReminders.todos||[])].sort((a,b)=>a.date.localeCompare(b.date)).map(todo=>{
+                    const today2 = new Date().toISOString().split('T')[0];
+                    const isToday = todo.date===today2;
+                    const isPast = todo.date<today2;
+                    return (
+                      <div key={todo.id} className={`flex items-center space-x-3 p-2 rounded ${isToday?'bg-orange-50 border border-orange-200':isPast?'bg-gray-50 opacity-60':'bg-white border border-gray-100'}`}>
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded whitespace-nowrap ${isToday?'bg-orange-500 text-white':isPast?'bg-gray-300 text-gray-600':'bg-blue-100 text-blue-700'}`}>
+                          {isToday?'今天':todo.date}
+                        </span>
+                        <span className="flex-1 text-sm text-gray-800">{todo.text}</span>
+                        <button onClick={()=>deleteTodo(todo.id)} className="text-gray-400 hover:text-red-500 p-1"><X size={14} /></button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+          {/* 自由便條區 */}
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 rounded-lg shadow-lg">
+            <div className="bg-yellow-100 px-4 py-3 border-b border-yellow-200 rounded-t-lg flex items-center justify-between">
+              <h4 className="font-semibold text-yellow-800">📝 自由便條</h4>
+              <div className="text-xs text-yellow-700">{editingNotes?'編輯中':'檢視'}</div>
+            </div>
+            <div className="p-4">
               {editingNotes ? (
                 <div>
-                  <textarea value={notesContent} onChange={e=>setNotesContent(e.target.value)} className="w-full h-96 p-4 bg-yellow-50 border-0 resize-none focus:ring-2 focus:ring-yellow-400 focus:outline-none text-gray-800 leading-relaxed" placeholder="在這裡寫下提醒事項、注意事項、預約時間等任何重要記住的內容..." style={{fontFamily:'serif',lineHeight:'28px'}} />
-                  <div className="flex justify-between items-center mt-4 pt-4 border-t border-yellow-200">
-                    <div className="text-xs text-yellow-700">最後編輯: {new Date().toLocaleString('zh-TW')}</div>
-                    <div className="flex space-x-3">
-                      <button onClick={saveReminders} className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center"><Save size={16} className="mr-2" />儲存便條</button>
-                      <button onClick={()=>{ setEditingNotes(false); setNotesContent(selectedPatientForReminders.reminders||''); }} className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700">取消</button>
-                    </div>
+                  <textarea value={notesContent} onChange={e=>setNotesContent(e.target.value)}
+                    className="w-full h-64 p-3 bg-yellow-50 border-0 resize-none focus:ring-2 focus:ring-yellow-400 focus:outline-none text-gray-800 leading-relaxed"
+                    placeholder="自由備註、注意事項..." style={{fontFamily:'serif',lineHeight:'28px'}} />
+                  <div className="flex justify-end space-x-2 mt-2">
+                    <button onClick={saveReminders} className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center text-sm"><Save size={14} className="mr-1" />儲存</button>
+                    <button onClick={()=>{setEditingNotes(false);setNotesContent(selectedPatientForReminders.reminders||'');}} className="bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600 text-sm">取消</button>
                   </div>
                 </div>
               ) : (
                 <div>
-                  <div className="min-h-96 p-4 text-gray-800 leading-relaxed whitespace-pre-line" style={{fontFamily:'serif',lineHeight:'28px'}}>{notesContent||'目前沒有提醒事項\n\n點擊右上角的編輯按鈕開始寫便條...'}</div>
-                  <div className="flex justify-between items-center mt-4 pt-4 border-t border-yellow-200">
-                    <div className="text-xs text-yellow-700">檢視模式 | 點擊右上角編輯按鈕修改</div>
-                    <button onClick={()=>setEditingNotes(true)} className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center"><Edit3 size={16} className="mr-2" />編輯便條</button>
+                  <div className="min-h-32 p-2 text-gray-800 leading-relaxed whitespace-pre-line text-sm" style={{fontFamily:'serif',lineHeight:'28px'}}>
+                    {notesContent||<span className="text-gray-400">點擊右上角編輯按鈕新增自由便條...</span>}
+                  </div>
+                  <div className="text-right mt-2">
+                    <button onClick={()=>setEditingNotes(true)} className="bg-blue-600 text-white px-3 py-1.5 rounded-md hover:bg-blue-700 flex items-center text-sm ml-auto"><Edit3 size={14} className="mr-1" />編輯</button>
                   </div>
                 </div>
               )}
@@ -1441,6 +1504,8 @@ const DialysisPatientSystem = () => {
               {filteredPatients.map(patient=>{
                 const shiftColor = patient.shift==='早' ? 'bg-yellow-100 text-yellow-800' : patient.shift==='中' ? 'bg-green-100 text-green-800' : patient.shift==='晚' ? 'bg-indigo-100 text-indigo-800' : 'bg-gray-100 text-gray-600';
                 const qwLabel = patient.qw==='QW135' ? '週一三五' : patient.qw==='QW246' ? '週二四六' : '';
+                const today = new Date().toISOString().split('T')[0];
+                const hasTodayTodo = (patient.todos||[]).some(t=>t.date===today);
                 return (
                 <div key={patient.patientId} className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-blue-500">
                   <div className="flex items-center justify-between">
@@ -1449,7 +1514,7 @@ const DialysisPatientSystem = () => {
                         <h3 className="font-semibold text-gray-800">{patient.name}</h3>
                         {patient.bed&&<span className="text-sm font-bold bg-gray-200 text-gray-700 px-2 py-0.5 rounded">{patient.bed}</span>}
                         {patient.shift&&<span className={`text-xs px-2 py-0.5 rounded font-medium ${shiftColor}`}>{qwLabel} {patient.shift}班</span>}
-                        <span className={`text-xs px-2 py-0.5 rounded ${patient.isActive!==false?'bg-green-100 text-green-800':'bg-gray-100 text-gray-600'}`}>{patient.isActive!==false?'使用中':'已暫停'}</span>
+                        {patient.frequency&&<span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">週{patient.frequency}次</span>}
                       </div>
                       <div className="mt-1 space-y-0.5 text-sm text-gray-600">
                         {(patient.accessType||patient.dw)&&<div className="flex items-center space-x-3"><span>通路: {patient.accessSide}{patient.accessLocation} {patient.accessType}</span><span>乾重: {patient.dw||0}kg</span></div>}
@@ -1457,7 +1522,8 @@ const DialysisPatientSystem = () => {
                         <div className="flex items-center space-x-3 text-xs">
                           {patient.medications&&patient.medications.length>0&&<span className="flex items-center text-blue-600"><Pill size={12} className="mr-1" />{patient.medications.length} 種藥</span>}
                           {patient.dialysisRecords&&patient.dialysisRecords.length>0&&<span className="flex items-center text-green-600"><Activity size={12} className="mr-1" />{patient.dialysisRecords.length} 次記錄</span>}
-                          {patient.reminders&&patient.reminders.trim()&&<span className="flex items-center text-orange-600"><Bell size={12} className="mr-1" />有記事</span>}
+                          {hasTodayTodo&&<span className="flex items-center text-orange-500 font-medium"><Bell size={12} className="mr-1" />今日待辦</span>}
+                          {patient.reminders&&patient.reminders.trim()&&<span className="flex items-center text-gray-400"><FileText size={12} className="mr-1" />有記事</span>}
                         </div>
                       </div>
                     </div>
