@@ -15,8 +15,7 @@ export default async function handler(req, res) {
     try {
       const { blobs } = await list({ prefix: 'patients.json' });
       if (blobs.length === 0) return res.status(200).json(null);
-      const url = blobs[0].downloadUrl ?? blobs[0].url;
-      const r = await fetch(url);
+      const r = await fetch(blobs[0].url);
       return res.status(200).json(await r.json());
     } catch (e) {
       return res.status(500).json({ error: e.message });
@@ -26,11 +25,10 @@ export default async function handler(req, res) {
   if (req.method === 'POST') {
     try {
       const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
-      // 先刪舊的
       const { blobs } = await list({ prefix: 'patients.json' });
       for (const b of blobs) await del(b.url);
-      // 寫入新的（private store 不加 access）
       await put('patients.json', body, {
+        access: 'public',
         contentType: 'application/json',
         addRandomSuffix: false,
       });
