@@ -905,12 +905,49 @@ const DialysisPatientSystem = () => {
               </div>
               <div className="border border-amber-200 bg-amber-50 rounded-lg p-3">
                 <p className="text-xs font-semibold text-amber-700 mb-2 uppercase tracking-wide">示範病患</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {[['P001234','林小明'],['P002468','陳小蓮'],['P003579','吳大山'],['P004680','張美枝']].map(([id,name])=>(
-                    <button key={id} onClick={()=>handleQRScan(id)} disabled={loading} className="bg-white border border-amber-300 text-amber-800 py-2 px-3 rounded-md hover:bg-amber-100 text-sm font-medium disabled:opacity-50">
-                      {name}
-                    </button>
-                  ))}
+                <div className="space-y-2">
+                  {patients.filter(p=>p.bed==='示範').map(patient=>{
+                    const shiftColor = patient.shift==='早' ? 'bg-yellow-100 text-yellow-800' : patient.shift==='中' ? 'bg-green-100 text-green-800' : patient.shift==='晚' ? 'bg-indigo-100 text-indigo-800' : 'bg-gray-100 text-gray-600';
+                    const qwLabel = patient.qw==='QW135' ? '週一三五' : patient.qw==='QW246' ? '週二四六' : '';
+                    const today = new Date().toISOString().split('T')[0];
+                    const hasTodayTodo = (patient.todos||[]).some(t=>t.date===today);
+                    return (
+                      <div key={patient.patientId} className="bg-white rounded-lg p-3 border-l-4 border-amber-400">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1 cursor-pointer hover:bg-amber-50 px-1 rounded transition-colors" onClick={()=>handleSelectPatient(patient)}>
+                            <div className="flex items-center space-x-2 flex-wrap gap-y-0.5">
+                              <h3 className="font-semibold text-gray-800 text-sm">{patient.name}</h3>
+                              {patient.frequency&&<span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">週{patient.frequency}次</span>}
+                              {patient.isActive===false&&<span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded">已轉出</span>}
+                            </div>
+                            <div className="mt-0.5 space-y-0.5 text-sm text-gray-600">
+                              <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5">
+                                {patient.shift&&<span className={`text-xs px-2 py-0.5 rounded font-medium ${shiftColor}`}>{qwLabel} {patient.shift}班</span>}
+                              </div>
+                              {(patient.accessType||patient.dw)&&<div className="flex items-center gap-x-3 text-xs text-gray-500"><span>通路: {patient.accessSide}{patient.accessLocation} {patient.accessType}</span><span>乾重: {patient.dw||0}kg</span></div>}
+                              {patient.drugAllergies&&patient.drugAllergies!=='無已知過敏'&&<div className="flex items-center text-red-600 font-medium text-xs"><AlertCircle size={12} className="mr-1" />過敏: {patient.drugAllergies}</div>}
+                              <div className="flex items-center space-x-3 text-xs">
+                                {patient.medications&&patient.medications.length>0&&<span className="flex items-center text-blue-600"><Pill size={12} className="mr-1" />{patient.medications.length} 種藥</span>}
+                                {patient.dialysisRecords&&patient.dialysisRecords.length>0&&<span className="flex items-center text-green-600"><Activity size={12} className="mr-1" />{patient.dialysisRecords.length} 次記錄</span>}
+                                {hasTodayTodo&&<span className="flex items-center text-orange-500 font-medium"><Bell size={12} className="mr-1" />今日待辦</span>}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex flex-col space-y-1 ml-2">
+                            <div className="flex space-x-1">
+                              <button onClick={()=>handleMedicationManagement(patient)} className="p-2 text-purple-600 hover:bg-purple-50 rounded border border-purple-200" title="藥物管理"><Pill size={14} /></button>
+                              <button onClick={()=>handleDialysisRecords(patient)} className="p-2 text-green-600 hover:bg-green-50 rounded border border-green-200" title="透析紀錄"><Activity size={14} /></button>
+                            </div>
+                            <div className="flex space-x-1">
+                              <button onClick={()=>handleLabReport(patient)} className="p-2 text-teal-600 hover:bg-teal-50 rounded border border-teal-200" title="抽血報告"><TrendingUp size={14} /></button>
+                              <button onClick={()=>handleReminders(patient)} className="p-2 text-orange-600 hover:bg-orange-50 rounded border border-orange-200" title="提醒事項"><Bell size={14} /></button>
+                              <button onClick={()=>{setCurrentPatient(patient);setIsNewPatient(false);setCurrentView('background');}} className="p-2 text-blue-600 hover:bg-blue-50 rounded border border-blue-200" title="背景資料"><FileText size={14} /></button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
