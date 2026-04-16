@@ -110,6 +110,7 @@ const DialysisPatientSystem = () => {
   const [expandedLabItem, setExpandedLabItem] = useState(null);
   const [labPeriodFilter, setLabPeriodFilter] = useState('all');
   const [medTab, setMedTab] = useState('dialysis');
+  const [unitFilter, setUnitFilter] = useState('國際桃庚');
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -463,7 +464,7 @@ const DialysisPatientSystem = () => {
   const updateField = (field, value) => setCurrentPatient(prev=>({...prev,[field]:value}));
 
   const getFilteredPatients = () => {
-    let filtered = patients.filter(p => p.bed !== '示範');
+    let filtered = patients.filter(p => p.bed !== '示範' && (p.unit||'國際桃庚') === unitFilter);
     const shiftFilters = {
       '135早': { qw:'QW135', shift:'早' }, '135中': { qw:'QW135', shift:'中' }, '135晚': { qw:'QW135', shift:'晚' },
       '246早': { qw:'QW246', shift:'早' }, '246中': { qw:'QW246', shift:'中' },
@@ -1516,11 +1517,28 @@ const DialysisPatientSystem = () => {
     const filteredPatients=getFilteredPatients();
     return (
       <div className="h-screen flex flex-col bg-gray-50">
-        <div className="bg-white shadow-sm border-b p-4 flex-shrink-0">
-          <div className="flex items-center justify-between">
+        <div className="bg-white shadow-sm border-b flex-shrink-0">
+          <div className="flex items-center justify-between p-4 pb-0">
             <button onClick={()=>setCurrentView('scanner')} className="text-blue-600 hover:bg-blue-50 p-2 rounded"><X size={20} /></button>
             <div className="text-center"><h1 className="text-lg font-semibold">病人列表</h1><ConnectionStatus /></div>
             <button onClick={()=>setCurrentView('scanner')} className="text-gray-600 hover:bg-gray-50 p-2 rounded"><Camera size={20} /></button>
+          </div>
+          <div className="flex border-t mt-3">
+            {[
+              {unit:'國際桃庚', activeTab:'border-blue-600 text-blue-700 bg-blue-50', activeBadge:'bg-blue-600 text-white'},
+              {unit:'大興鑫庚', activeTab:'border-green-600 text-green-700 bg-green-50', activeBadge:'bg-green-600 text-white'},
+              {unit:'南崁桃庚', activeTab:'border-purple-600 text-purple-700 bg-purple-50', activeBadge:'bg-purple-600 text-white'},
+            ].map(({unit, activeTab, activeBadge})=>{
+              const count = patients.filter(p=>p.bed!=='示範'&&(p.unit||'國際桃庚')===unit&&p.isActive!==false).length;
+              const active = unitFilter===unit;
+              return (
+                <button key={unit} onClick={()=>{setUnitFilter(unit);setStatusFilter('all');setSearchTerm('');patientListScrollTop.current=0;}}
+                  className={`flex-1 py-2 text-sm font-medium border-b-2 transition-colors ${active?activeTab:'border-transparent text-gray-500 hover:text-gray-700'}`}>
+                  {unit}
+                  {count>0&&<span className={`ml-1 text-xs px-1.5 py-0.5 rounded-full ${active?activeBadge:'bg-gray-200 text-gray-600'}`}>{count}</span>}
+                </button>
+              );
+            })}
           </div>
         </div>
         <div ref={patientListScrollRef} className="flex-1 overflow-y-auto">
