@@ -723,6 +723,13 @@ const DialysisPatientSystem = () => {
     return processRecords.filter(r=>r.specialNote&&r.specialNote.trim()).sort((a,b)=>a.time.localeCompare(b.time)).map(r=>`${r.time} ${r.specialNote}`).join('、 ');
   };
 
+  const toMinguo = (dateStr) => {
+    if (!dateStr) return '';
+    const y = parseInt(dateStr.split('-')[0]);
+    return isNaN(y) ? '' : `民國${y - 1911}年`;
+  };
+  const hasAllergy = (v) => v && v !== 'nil' && v !== '無已知過敏';
+
   const EditableField = ({ label, field, value, type='text', options=null, disabled=false }) => {
     const isEditing = editingField===field&&!disabled;
     return (
@@ -733,6 +740,7 @@ const DialysisPatientSystem = () => {
             <div className="flex items-center w-full">
               {options ? (
                 <select value={value||''} onChange={e=>updateField(field,e.target.value)} className="flex-1 p-2 border border-gray-300 rounded-md">
+                  {!value&&<option value="">-- 請選擇 --</option>}
                   {options.map(o=><option key={o} value={o}>{o}</option>)}
                 </select>
               ) : (
@@ -925,7 +933,7 @@ const DialysisPatientSystem = () => {
                                 {patient.shift&&<span className={`text-xs px-2 py-0.5 rounded font-medium ${shiftColor}`}>{qwLabel} {patient.shift}班</span>}
                               </div>
                               {(patient.accessType||patient.dw)&&<div className="flex items-center gap-x-3 text-xs text-gray-500"><span>通路: {patient.accessSide}{patient.accessLocation} {patient.accessType}</span><span>乾重: {patient.dw||0}kg</span></div>}
-                              {patient.drugAllergies&&patient.drugAllergies!=='無已知過敏'&&<div className="flex items-center text-red-600 font-medium text-xs"><AlertCircle size={12} className="mr-1" />過敏: {patient.drugAllergies}</div>}
+                              {hasAllergy(patient.drugAllergies)&&<div className="flex items-center text-red-600 font-medium text-xs"><AlertCircle size={12} className="mr-1" />過敏: {patient.drugAllergies}</div>}
                               <div className="flex items-center space-x-3 text-xs">
                                 {patient.medications&&patient.medications.length>0&&<span className="flex items-center text-blue-600"><Pill size={12} className="mr-1" />{patient.medications.length} 種藥</span>}
                                 {patient.dialysisRecords&&patient.dialysisRecords.length>0&&<span className="flex items-center text-green-600"><Activity size={12} className="mr-1" />{patient.dialysisRecords.length} 次記錄</span>}
@@ -1564,7 +1572,7 @@ const DialysisPatientSystem = () => {
                           {patient.shift&&<span className={`text-xs px-2 py-0.5 rounded font-medium ${shiftColor}`}>{qwLabel} {patient.shift}班</span>}
                         </div>
                         {(patient.accessType||patient.dw)&&<div className="flex items-center gap-x-3 text-xs text-gray-500 mt-0.5"><span>通路: {patient.accessSide}{patient.accessLocation} {patient.accessType}</span><span>乾重: {patient.dw||0}kg</span></div>}
-                        {patient.drugAllergies&&patient.drugAllergies!=='無已知過敏'&&<div className="flex items-center text-red-600 font-medium"><AlertCircle size={14} className="mr-1" />過敏: {patient.drugAllergies}</div>}
+                        {hasAllergy(patient.drugAllergies)&&<div className="flex items-center text-red-600 font-medium"><AlertCircle size={14} className="mr-1" />過敏: {patient.drugAllergies}</div>}
                         <div className="flex items-center space-x-3 text-xs">
                           {patient.medications&&patient.medications.length>0&&<span className="flex items-center text-blue-600"><Pill size={12} className="mr-1" />{patient.medications.length} 種藥</span>}
                           {patient.dialysisRecords&&patient.dialysisRecords.length>0&&<span className="flex items-center text-green-600"><Activity size={12} className="mr-1" />{patient.dialysisRecords.length} 次記錄</span>}
@@ -1913,23 +1921,53 @@ const DialysisPatientSystem = () => {
             </div>
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1">藥物過敏史</label>
+              {editingField==='drugAllergies' ? (
+                <div className="space-y-2">
+                  <div className="flex space-x-4">
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input type="radio" name="allergy" checked={!hasAllergy(currentPatient.drugAllergies)} onChange={()=>updateField('drugAllergies','nil')} />
+                      <span className="text-sm font-medium text-gray-700">Nil（無過敏史）</span>
+                    </label>
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input type="radio" name="allergy" checked={hasAllergy(currentPatient.drugAllergies)} onChange={()=>updateField('drugAllergies','')} />
+                      <span className="text-sm font-medium text-gray-700">有過敏藥物</span>
+                    </label>
+                  </div>
+                  {hasAllergy(currentPatient.drugAllergies)&&(
+                    <input type="text" value={currentPatient.drugAllergies} onChange={e=>updateField('drugAllergies',e.target.value)} className="w-full p-2 border border-gray-300 rounded-md text-sm" placeholder="請輸入過敏藥物名稱（例：盤尼西林）" autoFocus />
+                  )}
+                  <button onClick={()=>setEditingField(null)} className="bg-green-600 text-white px-4 py-1.5 rounded text-sm hover:bg-green-700">確認</button>
+                </div>
+              ) : (
+                <div className="flex items-center">
+                  <span className={`flex-1 p-2 rounded-md bg-gray-50 ${hasAllergy(currentPatient.drugAllergies)?'text-red-600 font-medium':'text-gray-500'}`}>
+                    {hasAllergy(currentPatient.drugAllergies) ? currentPatient.drugAllergies : 'Nil（無過敏史）'}
+                  </span>
+                  <button onClick={()=>setEditingField('drugAllergies')} className="ml-2 p-2 text-blue-600 hover:bg-blue-50 rounded"><Edit3 size={16} /></button>
+                </div>
+              )}
+              {hasAllergy(currentPatient.drugAllergies)&&<div className="mt-2 p-2 bg-red-50 border border-red-200 rounded"><p className="text-red-700 text-sm font-medium">⚠️ 注意：此病人有藥物過敏史</p></div>}
+            </div>
+            <EditableField label="首次透析院所" field="firstDialysisHospital" value={currentPatient.firstDialysisHospital||''} />
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">首次透析時間</label>
               <div className="flex items-center">
-                {editingField==='drugAllergies' ? (
-                  <div className="flex items-center w-full">
-                    <textarea value={currentPatient.drugAllergies||''} onChange={e=>updateField('drugAllergies',e.target.value)} className="flex-1 p-2 border border-gray-300 rounded-md resize-none" rows="2" placeholder="請輸入藥物過敏史，若無過敏請填寫「無已知過敏」" />
-                    <button onClick={()=>setEditingField(null)} className="ml-2 p-2 text-green-600 hover:bg-green-50 rounded"><Check size={16} /></button>
+                {editingField==='firstDialysisDate' ? (
+                  <div className="flex items-center w-full space-x-2">
+                    <input type="date" value={currentPatient.firstDialysisDate||''} onChange={e=>updateField('firstDialysisDate',e.target.value)} className="flex-1 p-2 border border-gray-300 rounded-md" />
+                    {currentPatient.firstDialysisDate&&<span className="text-sm text-gray-500 whitespace-nowrap">（{toMinguo(currentPatient.firstDialysisDate)}）</span>}
+                    <button onClick={()=>setEditingField(null)} className="p-2 text-green-600 hover:bg-green-50 rounded"><Check size={16} /></button>
                   </div>
                 ) : (
                   <div className="flex items-center w-full">
-                    <span className="flex-1 p-2 rounded-md bg-gray-50 min-h-8 whitespace-pre-wrap">{currentPatient.drugAllergies||'N/A'}</span>
-                    <button onClick={()=>setEditingField('drugAllergies')} className="ml-2 p-2 text-blue-600 hover:bg-blue-50 rounded"><Edit3 size={16} /></button>
+                    <span className="flex-1 p-2 rounded-md bg-gray-50">
+                      {currentPatient.firstDialysisDate ? `${currentPatient.firstDialysisDate}（${toMinguo(currentPatient.firstDialysisDate)}）` : 'N/A'}
+                    </span>
+                    <button onClick={()=>setEditingField('firstDialysisDate')} className="ml-2 p-2 text-blue-600 hover:bg-blue-50 rounded"><Edit3 size={16} /></button>
                   </div>
                 )}
               </div>
-              {currentPatient.drugAllergies&&<div className="mt-2 p-2 bg-red-50 border border-red-200 rounded"><p className="text-red-700 text-sm font-medium">⚠️ 注意：此病人有藥物過敏史</p></div>}
             </div>
-            <EditableField label="首次透析院所" field="firstDialysisHospital" value={currentPatient.firstDialysisHospital||''} />
-            <EditableField label="首次透析時間" field="firstDialysisDate" value={currentPatient.firstDialysisDate||''} type="date" />
             {currentPatient.firstDialysisDate&&(
               <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded">
                 <p className="text-blue-700 text-sm"><strong>透析年資：</strong>{(()=>{ const s=new Date(currentPatient.firstDialysisDate); const c=new Date(); const y=Math.floor((c-s)/(365.25*24*60*60*1000)); const m=Math.floor(((c-s)%(365.25*24*60*60*1000))/(30.44*24*60*60*1000)); return `約 ${y} 年 ${m} 個月`; })()}</p>
