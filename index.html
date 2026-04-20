@@ -1951,10 +1951,10 @@ const DialysisPatientSystem = () => {
                       <span className="text-sm font-medium text-gray-700">有過敏藥物</span>
                     </label>
                   </div>
-                  {hasAllergy(currentPatient.drugAllergies)&&(
+                  {(hasAllergy(currentPatient.drugAllergies)||currentPatient.drugAllergies==='')&&(
                     <input type="text" value={currentPatient.drugAllergies} onChange={e=>updateField('drugAllergies',e.target.value)} className="w-full p-2 border border-gray-300 rounded-md text-sm" placeholder="請輸入過敏藥物名稱（例：盤尼西林）" autoFocus />
                   )}
-                  <button onClick={()=>setEditingField(null)} className="bg-green-600 text-white px-4 py-1.5 rounded text-sm hover:bg-green-700">確認</button>
+                  <button onClick={()=>{ if(currentPatient.drugAllergies==='') updateField('drugAllergies','nil'); setEditingField(null); }} className="bg-green-600 text-white px-4 py-1.5 rounded text-sm hover:bg-green-700">確認</button>
                 </div>
               ) : (
                 <div className="flex items-center">
