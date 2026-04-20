@@ -1738,7 +1738,7 @@ const DialysisPatientSystem = () => {
             {[...pts].reverse().map((p,i)=>{
               const s=checkRef(item,String(p.val));
               return (
-                <span key={i} className={`text-xs px-2 py-0.5 rounded-full font-medium ${s==='low'?'bg-blue-100 text-blue-700':s==='high'?'bg-orange-100 text-orange-700':'bg-gray-100 text-gray-600'}`}>
+                <span key={i} className={`text-xs px-2 py-0.5 rounded-full font-bold ${s==='low'?'bg-blue-200 text-blue-900':s==='high'?'bg-orange-200 text-orange-900':'bg-gray-100 text-gray-600'}`}>
                   {p.ym||p.date} · {p.val}
                 </span>
               );
@@ -1798,21 +1798,21 @@ const DialysisPatientSystem = () => {
                   <tbody>
                     {allItems.map((item,idx)=>{
                       const rs = rowStatus(item);
-                      const rowBg = rs==='low' ?'bg-blue-50':rs==='high'?'bg-orange-50':idx%2===0?'bg-white':'bg-gray-50';
+                      const rowBg = rs==='low' ?'bg-blue-100':rs==='high'?'bg-orange-100':idx%2===0?'bg-white':'bg-gray-50';
                       const isExp = expandedLabItem===item;
                       return (
                         <React.Fragment key={item}>
                           <tr className={`${rowBg} cursor-pointer active:opacity-70`}
                             onClick={()=>setExpandedLabItem(isExp?null:item)}>
-                            <td className={`py-2 px-3 font-medium text-xs ${rs==='low'?'text-blue-800':rs==='high'?'text-orange-800':'text-gray-700'}`}>
+                            <td className={`py-2 px-3 font-medium text-xs border-l-4 ${rs==='low'?'text-blue-900 border-blue-500':rs==='high'?'text-orange-900 border-orange-500':'text-gray-700 border-transparent'}`}>
                               <div className="flex items-center justify-between">
-                                <span>{item}</span>
+                                <span className={rs!=='normal'?'font-bold':''}>{item}{rs==='low'?' ↓':rs==='high'?' ↑':''}</span>
                                 <span className="text-gray-300 ml-1">{isExp?'▲':'▼'}</span>
                               </div>
-                              {LAB_REFS[item]&&<span className="text-gray-400 font-normal">{LAB_REFS[item].label}</span>}
+                              {LAB_REFS[item]&&<span className={`font-normal ${rs==='low'?'text-blue-600':rs==='high'?'text-orange-600':'text-gray-400'}`}>{LAB_REFS[item].label}</span>}
                             </td>
                             {records.map((rec,ri)=>(
-                              <td key={ri} className={`text-center py-2 px-2 font-semibold text-sm ${rs==='low'?'text-blue-700':rs==='high'?'text-orange-700':'text-gray-800'}`}>
+                              <td key={ri} className={`text-center py-2 px-2 text-sm font-bold ${rs==='low'?'text-blue-800':rs==='high'?'text-orange-800':'text-gray-800 font-semibold'}`}>
                                 {rec[item]||'-'}
                               </td>
                             ))}
@@ -1831,8 +1831,8 @@ const DialysisPatientSystem = () => {
                 </table>
               </div>
               <div className="p-2 border-t bg-gray-50 text-xs text-gray-400 flex space-x-3">
-                <span><span className="inline-block w-2.5 h-2.5 bg-blue-200 rounded mr-1"></span>偏低</span>
-                <span><span className="inline-block w-2.5 h-2.5 bg-orange-200 rounded mr-1"></span>偏高</span>
+                <span><span className="inline-block w-2.5 h-2.5 bg-blue-400 rounded mr-1"></span>偏低 ↓</span>
+                <span><span className="inline-block w-2.5 h-2.5 bg-orange-400 rounded mr-1"></span>偏高 ↑</span>
                 <span><span className="inline-block w-2.5 h-2.5 bg-green-100 rounded mr-1"></span>正常範圍</span>
                 <span>點列展開趨勢圖</span>
               </div>
